@@ -1,0 +1,5 @@
+cbpro==1.1.4
+#pandas
+#psycopg2
+#requests
+#sqlalchemy
