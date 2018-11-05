@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-if __name__ == '__main__':
-    from pykamino._cli import cli
-    cli.run()
+from pykamino._cli.interface import MainInterface
 
+if __name__ == "__main__":
+    MainInterface()

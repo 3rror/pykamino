@@ -1,4 +1,5 @@
 cbpro==1.1.4
+python-daemon
 #pandas
 #psycopg2
 #requests
