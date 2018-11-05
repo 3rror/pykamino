@@ -1,8 +1,10 @@
+from appdirs import user_config_dir
 from setuptools import setup
+import pykamino
 
 setup(
     name="pykamino",
-    version="0.1",
+    version=pykamino.__version__,
     description="All-In-One tool for project Naboo",
     url="https://gitlab-rbl.unipv.it/fforni/pykamino",
     author="Fabio Forni, Gianluca Andreotti",
@@ -11,4 +13,5 @@ setup(
     packages=["pykamino"],
     zip_safe=True,
     scripts=["bin/pykamino"],
+    data_files=[(user_config_dir('pykamino'), ['pykamino/_config/pykamino.toml'])]
 )
