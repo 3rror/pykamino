@@ -1,31 +1,22 @@
 import cbpro
 
 
-class Scraper:
-    def __init__(self, products, mongo_collection):
-        self.websocket = PykaminoWebsocket(
-            products=products, mongo_collection=mongo_collection)
-
-    def start(self):
-        self.websocket.start()
-
-    def stop(self):
-        self.websocket.stop()
-
-
-class PykaminoWebsocket(cbpro.WebsocketClient):
+class Scraper(cbpro.WebsocketClient):
     CACHE_SIZE = 1000
 
     def on_open(self):
         self.msg_counter = 0
+        self.messages = []
 
-    def on_message(self):
-        if self.msg_counter == PykaminoWebsocket.CACHE_SIZE:
+    def on_message(self, msg):
+        if self.msg_counter == Scraper.CACHE_SIZE:
             self.msg_counter = 0
-            # TODO: parse things in mongodb
+            # TODO: parse things
         else:
+            self.messages.append(msg)
+            # Using a counter is probably faster than using the list's length
             self.msg_counter += 1
 
     def on_close(self):
         pass
-        # TODO: parse the remaining data in mongodb, then empty it
+        # TODO: parse the remaining data in the list, then empty it

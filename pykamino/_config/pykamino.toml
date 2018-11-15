@@ -6,9 +6,3 @@
     port = "10501"
     db_name = "database"
 
-    [scraper.cache]
-    user = "user"
-    password = "pwd"
-    hostname = "localhost"
-    port = "27017"
-    db_name = "database"
