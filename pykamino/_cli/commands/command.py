@@ -7,6 +7,8 @@ class Command(metaclass=ABCMeta):
         self.description = description
 
     def add_to_parser(self, parser):
+        # FIXME: yes, it's not elegant from a component (command) to add itself
+        # to its container (parser).
         self.parser = parser.add_parser(
             self.name, description=self.description)
         self.set_arguments(self.parser)
@@ -21,4 +23,15 @@ class Command(metaclass=ABCMeta):
 
     @abstractmethod
     def set_arguments(self, parser):
+        """
+        Set command's argument in the parser.
+
+        This method will be called by `add_to_parser` to add the
+        command's parameters to the parent parser, which is here exposed
+        as a function argument.
+
+        Args:
+            parser: A parser from the argparse module
+
+        """
         pass
