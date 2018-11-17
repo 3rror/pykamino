@@ -4,6 +4,9 @@ import cbpro
 class Scraper(cbpro.WebsocketClient):
     CACHE_SIZE = 1000
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(channels=['full'], *args, **kwargs)
+
     def on_open(self):
         self.msg_counter = 0
         self.messages = []
