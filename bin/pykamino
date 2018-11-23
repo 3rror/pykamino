@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 
-from pykamino._cli.commands.scrape import Scrape
-from pykamino._cli.dispatcher import Dispatcher
+import argparse
 
-if __name__ == "__main__":
-    disp = Dispatcher("LOL")
-    disp.add_command(Scrape(description='Test'))
-    disp.run()
+parser = argparse.ArgumentParser()
+subparsers = parser.add_subparsers(help='Functions')
+parser_scraper = subparsers.add_parser('scraper', help='Fetch data from various services')
+parser_features = subparsers.add_parser('features', help='Calculate features from the data downloaded')
+
+parser.parse_args()
