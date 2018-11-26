@@ -8,17 +8,14 @@ class Scraper(cbpro.WebsocketClient):
         super().__init__(channels=['full'], *args, **kwargs)
 
     def on_open(self):
-        self.msg_counter = 0
         self.messages = []
 
     def on_message(self, msg):
-        if self.msg_counter == Scraper.CACHE_SIZE:
-            self.msg_counter = 0
-            # TODO: parse things
+        if len(self.messages) == Scraper.CACHE_SIZE:
+            # TODO: parse things here
+            self.messages.clear()
         else:
             self.messages.append(msg)
-            # Using a counter is probably faster than using the list's length
-            self.msg_counter += 1
 
     def on_close(self):
         pass
