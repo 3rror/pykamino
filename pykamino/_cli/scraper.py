@@ -2,6 +2,7 @@ from pykamino._config import config as cfg
 from pykamino.scraper import Scraper
 import appdirs
 import service
+import sys
 
 
 class Service(service.Service):
@@ -22,7 +23,10 @@ service = Service()
 
 
 def run(*args, **kwargs):
-    service.start()
+    if service.is_running():
+        print('Service already running', file=sys.stderr)
+    else:
+        service.start()
 
 
 def stop(*args, **kwargs):
