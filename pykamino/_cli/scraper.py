@@ -2,7 +2,6 @@ from pykamino._config import config as cfg
 from pykamino.scraper.scraper import Scraper
 import appdirs
 import service
-import time
 
 
 class Service(service.Service):
@@ -13,8 +12,7 @@ class Service(service.Service):
 
     def run(self):
         self.scraper.start()
-        while not self.got_sigterm():
-            time.sleep(3)
+        self.wait_for_sigterm()
 
     def stop(self, block=False):
         self.scraper.close()
@@ -22,4 +20,6 @@ class Service(service.Service):
 
 
 def run(*args, **kwargs):
-    Service().start()
+    service = Service()
+    service.start()
+
