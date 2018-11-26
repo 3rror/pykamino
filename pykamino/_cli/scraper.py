@@ -1,5 +1,5 @@
 from pykamino._config import config as cfg
-from pykamino.scraper.scraper import Scraper
+from pykamino.scraper import Scraper
 import appdirs
 import service
 
