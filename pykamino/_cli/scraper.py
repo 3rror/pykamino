@@ -15,11 +15,15 @@ class Service(service.Service):
         self.wait_for_sigterm()
 
     def stop(self, block=False):
-        self.scraper.close()
         super().stop(block=block)
 
 
+service = Service()
+
+
 def run(*args, **kwargs):
-    service = Service()
     service.start()
 
+
+def stop(*args, **kwargs):
+    service.stop()
