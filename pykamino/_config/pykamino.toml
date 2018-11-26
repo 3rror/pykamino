@@ -1,3 +1,6 @@
+[global]
+products = [ "BTC-USD" ]
+
 [scraper]
     [scraper.database]
     user = "user"
