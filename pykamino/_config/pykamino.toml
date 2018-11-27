@@ -3,6 +3,7 @@ products = [ "BTC-USD" ]
 
 [scraper]
     [scraper.database]
+    dbms = "postgres"
     user = "user"
     password = "pwd"
     hostname = "localhost"
