@@ -4,9 +4,9 @@ products = [ "BTC-USD" ]
 [scraper]
     [scraper.database]
     dbms = "postgres"
-    user = "user"
-    password = "pwd"
+    user = "postgres"
+    password = "password"
     hostname = "localhost"
-    port = "10501"
-    db_name = "database"
+    port = "32768"
+    db_name = "postgres"
 
