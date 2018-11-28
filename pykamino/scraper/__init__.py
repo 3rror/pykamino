@@ -1,24 +1,23 @@
-from pykamino.db.models import Trade
+from pykamino.db import database, Trade
 import cbpro
 
 
 class Scraper(cbpro.WebsocketClient):
     CACHE_SIZE = 100
 
-    def __init__(self, db_conn, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__(channels=['matches'], *args, **kwargs)
-        self.db_conn = db_conn
 
     def on_open(self):
         self.messages = []
 
     def on_message(self, msg):
+        self.messages.append(msg)
         if len(self.messages) == Scraper.CACHE_SIZE:
-            Trade.insert_many(list(self.matches(self.messages)))
+            with database.atomic():
+                Trade.insert_many(list(self.matches(self.messages)),
+                                  fields=Trade._meta.fields).execute()
             self.messages.clear()
-        else:
-            self.messages.append(msg)
-        print(msg)
 
     def on_close(self):
         pass
