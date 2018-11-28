@@ -1,4 +1,4 @@
-from enum import auto, Enum
+from enum import Enum
 from peewee import BigIntegerField, CharField, DateTimeField, DecimalField
 from peewee import Model
 from peewee import MySQLDatabase, PostgresqlDatabase, Proxy, SqliteDatabase
@@ -9,9 +9,9 @@ database = Proxy()
 
 
 class Dbms(Enum):
-    MYSQL = auto()
-    POSTGRES = auto()
-    SQLITE = auto()
+    MYSQL = 'mysql'
+    POSTGRES = 'postgres'
+    SQLITE = 'sqlite'
 
 
 def db_factory(dbms: Dbms, user, psw, host, port, db_name):
