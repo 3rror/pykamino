@@ -1,4 +1,5 @@
 from pykamino._config import config as cfg
+from pykamino.db import db_factory, Dbms
 from pykamino.scraper import Scraper
 import appdirs
 import service
@@ -26,6 +27,9 @@ def run(*args, **kwargs):
     if service.is_running():
         print('Service already running', file=sys.stderr)
     else:
+        conf = cfg['scraper']['database']
+        db_factory(Dbms(conf['dbms']), conf['user'], conf['password'],
+                   conf['hostname'], conf['port'], conf['db_name'])
         service.start()
 
 
