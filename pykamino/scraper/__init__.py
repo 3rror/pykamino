@@ -6,7 +6,7 @@ class Scraper(cbpro.WebsocketClient):
     CACHE_SIZE = 100
 
     def __init__(self, *args, **kwargs):
-        super().__init__(channels=['matches'], *args, **kwargs)
+        super().__init__(channels=['full'], *args, **kwargs)
 
     def on_open(self):
         self.messages = []
@@ -14,14 +14,21 @@ class Scraper(cbpro.WebsocketClient):
     def on_message(self, msg):
         self.messages.append(msg)
         if len(self.messages) == Scraper.CACHE_SIZE:
+            orders, trades = [list(type) for type in self.classify_messages(self.messages)]
             with database.atomic():
-                Trade.insert_many(list(self.matches(self.messages)),
-                                  fields=Trade._meta.fields).execute()
+                if trades:
+                    Trade.insert_many(trades, fields=Trade._meta.fields).execute()
             self.messages.clear()
 
     def on_close(self):
         pass
         # TODO: parse the remaining data in the list, then empty it
 
-    def matches(self, msg_list):
-        return (msg for msg in msg_list if msg['type'] == 'last_match' or msg['type'] == 'match')
+    def classify_messages(self, msg_list):
+        """
+        Split the list of messages in two dicts: one representing the order book, the other the trades.
+        """
+        # FIXME: probably, the list of types for orders is incomplete.
+        orders = (msg for msg in msg_list if msg['type'] in ['open', 'done'])
+        trades = (msg for msg in msg_list if msg['type'] == 'match')
+        return orders, trades
