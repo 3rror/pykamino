@@ -1,5 +1,6 @@
 from pykamino.db import database, Trade
 import cbpro
+import itertools
 
 
 class Scraper(cbpro.WebsocketClient):
@@ -29,6 +30,7 @@ class Scraper(cbpro.WebsocketClient):
         Split the list of messages in two dicts: one representing the order book, the other the trades.
         """
         # FIXME: probably, the list of types for orders is incomplete.
-        orders = (msg for msg in msg_list if msg['type'] in ['open', 'done'])
-        trades = (msg for msg in msg_list if msg['type'] == 'match')
+        it1, it2 = itertools.tee(msg_list)
+        orders = (order for order in it1 if order['type'] in ['open', 'done'])
+        trades = (trade for trade in it2 if trade['type'] == 'match')
         return orders, trades
