@@ -7,6 +7,10 @@ import sys
 
 
 class Service(service.Service):
+    """
+    A background process that downloads data, parse it, and store it in a database.
+    """
+
     def __init__(self, *args, **kwargs):
         super().__init__('cbpro_service',
                          pid_dir=appdirs.user_cache_dir('pykamino'), *args, **kwargs)
@@ -23,6 +27,7 @@ class Service(service.Service):
 service = Service()
 
 
+### CLI commands ###
 def run(*args, **kwargs):
     if service.is_running():
         print('Service already running', file=sys.stderr)
