@@ -1,5 +1,5 @@
 from enum import Enum
-from peewee import BigIntegerField, CharField, DateTimeField, DecimalField
+from peewee import BigIntegerField, CharField, DateTimeField, DecimalField, ForeignKeyField, UUIDField
 from peewee import Model
 from peewee import MySQLDatabase, PostgresqlDatabase, Proxy, SqliteDatabase
 
@@ -36,6 +36,12 @@ def db_factory(dbms: Dbms, user, psw, host, port, db_name):
     return database
 
 
+class CurrencyField(DecimalField):
+    def __init__(self, auto_round=False, rounding=None, *args, **kwargs):
+        super().__init__(max_digits=17, decimal_places=8, auto_round=False,
+                         rounding=None, *args, **kwargs)
+
+
 class BaseModel(Model):
     class Meta:
         database = database
@@ -50,9 +56,9 @@ class Trade(BaseModel):
     """
     trade_id = BigIntegerField(primary_key=True)
     side = CharField()
-    size = CharField()
+    size = CurrencyField()
     product_id = CharField()
-    price = CharField()
+    price = CurrencyField()
     time = DateTimeField()
 
     class Meta:
@@ -61,3 +67,21 @@ class Trade(BaseModel):
 # NOTE: side and product_id could be foreign keys of a table
 # containing the actual values.
 
+
+class Order(BaseModel):
+    order_id = UUIDField(primary_key=True)
+    side = CharField()
+    product_id = CharField()
+
+    class Meta:
+        schema = 'data'
+
+
+class OrderTimeline(BaseModel):
+    remaining_size = CurrencyField()
+    price = CurrencyField()
+    time = DateTimeField()
+    order_id = ForeignKeyField(Order)
+
+    class Meta:
+        schema = 'data'
