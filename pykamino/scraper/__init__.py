@@ -3,7 +3,7 @@ import cbpro
 
 
 class Scraper(cbpro.WebsocketClient):
-    CACHE_SIZE = 100
+    BUFFER_SIZE = 100
 
     def __init__(self, *args, **kwargs):
         super().__init__(channels=['full'], *args, **kwargs)
@@ -13,7 +13,7 @@ class Scraper(cbpro.WebsocketClient):
 
     def on_message(self, msg):
         self.messages.append(msg)
-        if len(self.messages) == Scraper.CACHE_SIZE:
+        if len(self.messages) == Scraper.BUFFER_SIZE:
             orders, trades = [list(type) for type in self.classify_messages(self.messages)]
             with database.atomic():
                 if trades:
