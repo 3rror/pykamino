@@ -27,10 +27,9 @@ class Scraper(cbpro.WebsocketClient):
 
     def classify_messages(self, msg_list):
         """
-        Split the list of messages in two dicts: one representing the order book, the other the trades.
+        Split the list of messages in two iterators: orders and trades
         """
-        # FIXME: probably, the list of types for orders is incomplete.
-        it1, it2 = itertools.tee(msg_list)
-        orders = (order for order in it1 if order['type'] in ['open', 'done'])
-        trades = (trade for trade in it2 if trade['type'] == 'match')
-        return orders, trades
+        t1, t2 = itertools.tee(msg_list)
+
+        def pred(msg): return msg['type'] == 'match'
+        return itertools.filterfalse(pred, t1), filter(pred, t2)
