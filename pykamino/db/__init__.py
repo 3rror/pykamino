@@ -45,6 +45,7 @@ class CurrencyField(DecimalField):
 class BaseModel(Model):
     class Meta:
         database = database
+        legacy_table_names = False
 
 
 class Trade(BaseModel):
