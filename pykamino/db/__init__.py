@@ -32,7 +32,7 @@ def db_factory(dbms: Dbms, user, psw, host, port, db_name):
     elif dbms == Dbms.SQLITE:
         db = SqliteDatabase(**args)
     database.initialize(db)
-    database.create_tables([kls for kls in BaseModel.__subclasses__()])
+    database.create_tables(BaseModel.__subclasses__())
     return database
 
 
