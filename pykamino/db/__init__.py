@@ -83,6 +83,7 @@ class OrderTimeline(BaseModel):
     price = CurrencyField()
     time = DateTimeField()
     order_id = ForeignKeyField(Order)
+    reason = CharField(nullable=True)
 
     class Meta:
         schema = 'data'
