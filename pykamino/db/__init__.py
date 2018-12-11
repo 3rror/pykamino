@@ -1,4 +1,5 @@
 from enum import Enum
+from functools import partial
 from peewee import BigIntegerField, CharField, DateTimeField, DecimalField, ForeignKeyField, UUIDField
 from peewee import Model
 from peewee import MySQLDatabase, PostgresqlDatabase, Proxy, SqliteDatabase
@@ -36,10 +37,7 @@ def db_factory(dbms: Dbms, user, psw, host, port, db_name):
     return database
 
 
-class CurrencyField(DecimalField):
-    def __init__(self, auto_round=False, rounding=None, *args, **kwargs):
-        super().__init__(max_digits=17, decimal_places=8, auto_round=False,
-                         rounding=None, *args, **kwargs)
+CurrencyField = partial(DecimalField, max_digits=17, decimal_places=8)
 
 
 class BaseModel(Model):
@@ -83,7 +81,7 @@ class OrderTimeline(BaseModel):
     price = CurrencyField()
     time = DateTimeField()
     order_id = ForeignKeyField(Order)
-    reason = CharField(nullable=True)
+    reason = CharField(null=True)
 
     class Meta:
         schema = 'data'
