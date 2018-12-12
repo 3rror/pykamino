@@ -1,6 +1,6 @@
 from contextlib import suppress
 from peewee import ProgrammingError
-from pykamino.db import database, Trade
+from pykamino.db import database, dict_to_orders, Trade, Order, OrderTimeline
 import cbpro
 import itertools
 
@@ -18,11 +18,16 @@ class Scraper(cbpro.WebsocketClient):
         self.messages.append(msg)
         if len(self.messages) == Scraper.BUFFER_SIZE:
             orders, trades = self.classify_messages(self.messages)
+            orders, timelines = dict_to_orders(orders)
             with database.atomic():
                 with suppress(ProgrammingError):
                     Trade.insert_many(trades, fields=Trade._meta.fields).execute()
-                if orders:
-                    pass
+                    Order.bulk_create(orders)
+                with database.atomic():
+                    with suppress(Order.DoesNotExist):
+                        import pdb
+                        pdb.set_trace()
+                        OrderTimeline.bulk_create(timelines)
             self.messages.clear()
 
     def on_close(self):
@@ -33,13 +38,7 @@ class Scraper(cbpro.WebsocketClient):
         """
         Split the list of messages in two iterators: orders and trades
         """
-        t1, t2 = itertools.tee(msg_list)
+        orders, trades = itertools.tee(msg_list)
 
         def pred(msg): return msg['type'] == 'match'
-        return itertools.filterfalse(pred, t1), filter(pred, t2)
-
-
-def handle_order_types(orders):
-    for order in orders:
-        if order['type'] == 'open':
-            pass
+        return itertools.filterfalse(pred, orders), filter(pred, trades)
