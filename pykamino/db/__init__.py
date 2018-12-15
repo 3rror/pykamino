@@ -4,6 +4,7 @@ from peewee import BigIntegerField, CharField, DateTimeField, DecimalField, Fore
 from peewee import Model
 from peewee import MySQLDatabase, PostgresqlDatabase, Proxy, SqliteDatabase
 from playhouse.shortcuts import dict_to_model
+import datetime
 
 # We want the database to be dinamically defined, so that we
 # can support different DBMSs. In order to do that, we first declare a placeholder.
@@ -80,7 +81,7 @@ class Order(BaseModel):
 class OrderTimeline(BaseModel):
     remaining_size = CurrencyField()
     price = CurrencyField()
-    time = DateTimeField()
+    time = DateTimeField(default=datetime.datetime.now)
     order_id = ForeignKeyField(Order)
     reason = CharField(null=True)
 
