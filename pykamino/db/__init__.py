@@ -1,10 +1,10 @@
+import datetime
 from enum import Enum
 from functools import partial
-from peewee import BigIntegerField, CharField, DateTimeField, DecimalField, ForeignKeyField, UUIDField
-from peewee import Model
-from peewee import MySQLDatabase, PostgresqlDatabase, Proxy, SqliteDatabase
-from playhouse.shortcuts import dict_to_model
-import datetime
+
+from peewee import (BigIntegerField, CharField, DateTimeField, DecimalField,
+                    ForeignKeyField, Model, MySQLDatabase, PostgresqlDatabase,
+                    Proxy, SqliteDatabase, UUIDField)
 
 # We want the database to be dinamically defined, so that we
 # can support different DBMSs. In order to do that, we first declare a placeholder.
@@ -70,9 +70,9 @@ class Trade(BaseModel):
 
 
 class Order(BaseModel):
-    order_id = UUIDField(primary_key=True)
+    id = UUIDField(primary_key=True)
     side = CharField()
-    product_id = CharField()
+    product = CharField()
 
     class Meta:
         schema = 'data'
@@ -82,25 +82,8 @@ class OrderTimeline(BaseModel):
     remaining_size = CurrencyField()
     price = CurrencyField()
     time = DateTimeField(default=datetime.datetime.now)
-    order_id = ForeignKeyField(Order)
+    order = ForeignKeyField(Order)
     reason = CharField(null=True)
 
     class Meta:
         schema = 'data'
-
-
-def dict_to_orders(orders):
-    """
-    Return two lists: the former is a list of pure `Order` instances, the latter
-    is a list of `OrderTimeline` objects.
-    """
-    orders_to_save = []
-    timelines = []
-    def dict_to_timeline(order): timelines.append(dict_to_model(OrderTimeline, order, ignore_unknown=True))
-    for order in orders:
-        if order['type'] in ['change', 'done']:
-            dict_to_timeline(order)
-        elif order['type'] == 'open':
-            orders_to_save.append(dict_to_model(Order, order, ignore_unknown=True))
-            dict_to_timeline(order)
-    return orders_to_save, timelines
