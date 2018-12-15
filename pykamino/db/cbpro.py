@@ -9,11 +9,11 @@ from pykamino.db import Order, OrderTimeline
 def book_snapshot_to_orders(snap, product):
     orders = []
     timelines = []
-    for key, value in snap.items():
-        if key in ['bids', 'asks']:
-            orders.append(Order(id=value[2], side=key, product=product))
-            timelines.append(OrderTimeline(price=value[0],
-                                           size=value[1],
+    for key in (k for k in snap if k in ['bids', 'asks']):
+        for item in snap[key]:
+            orders.append(Order(id=item[2], side=key, product=product))
+            timelines.append(OrderTimeline(price=item[0],
+                                           remaining_size=item[1],
                                            order=orders[-1]))
     return orders, timelines
 
