@@ -12,7 +12,9 @@ def book_snapshot_to_orders(snap, product):
     for key, value in snap.items():
         if key in ['bids', 'asks']:
             orders.append(Order(id=value[2], side=key, product=product))
-            timelines.append(OrderTimeline(price=value[0], size=value[1]))
+            timelines.append(OrderTimeline(price=value[0],
+                                           size=value[1],
+                                           order=orders[-1]))
     return orders, timelines
 
 
