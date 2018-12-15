@@ -39,7 +39,7 @@ def db_factory(dbms: Dbms, user, psw, host, port, db_name):
     return database
 
 
-CurrencyField = partial(DecimalField, max_digits=17, decimal_places=8)
+CurrencyField = partial(DecimalField, max_digits=18, decimal_places=8)
 
 
 class BaseModel(Model):
