@@ -22,7 +22,6 @@ def db_factory(dbms: Dbms, user, psw, host, port, db_name):
     Set up the database connection with the given parameters.
     You must call this function before any operation on the database.
     """
-    global database
     args = {'database': db_name,
             'user': user,
             'password': psw,
