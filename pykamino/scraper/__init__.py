@@ -1,5 +1,4 @@
 import itertools
-
 import cbpro
 from peewee import ProgrammingError
 
@@ -17,12 +16,19 @@ class Scraper():
 
     def start(self):
         self.receiver.start()
-        self.save_book_snapshot()
+        seq = self.save_book_snapshot()
+        # FIXME: not thread-safe?
+        #self.receiver.messages = filter(lambda m: m['sequence'] > seq, self.receiver.messages)
+
 
     def save_book_snapshot(self):
-        # TODO: support more than one product at time
-        book_snap = self.query_client.get_product_order_book(self.products[0], level=3)
-        orders, timelines = book_snapshot_to_orders(book_snap, self.products[0])
+        orders = []
+        timelines = []
+        for prod in self.products:
+            book_snap = self.query_client.get_product_order_book(prod, level=3)
+            new_orders, new_timelines = book_snapshot_to_orders(book_snap, prod)
+            orders.extend(new_orders)
+            timelines.extend(new_timelines)
         # Don't insert already existing orders
         query = Order.select(Order.id).where(Order.id.in_([el.id for el in orders])).execute()
         filt = set((str(order.id) for order in query))
@@ -31,6 +37,7 @@ class Scraper():
         with database.atomic():
             Order.bulk_create(orders)
             OrderTimeline.bulk_create(timelines)
+        return book_snap['sequence']
 
     def classify_messages(self, msg_list):
         """
@@ -49,11 +56,11 @@ class Receiver(cbpro.WebsocketClient):
         self.observers = []
 
     def on_open(self):
-        self.messages = list()
+        self._messages = []
 
     def on_message(self, msg):
-        self.messages.append(msg)
-        msg_count = len(self.messages)
+        self._messages.append(msg)
+        msg_count = len(self._messages)
         if msg_count % self.buffer_size == 0:
             self.fire(msg_count=msg_count)
 
@@ -64,3 +71,11 @@ class Receiver(cbpro.WebsocketClient):
     def fire(self, *args, **kwargs):
         for callback in self.observers:
             callback(*args, **kwargs)
+    
+    @property
+    def messages(self):
+        return self._messages
+    
+    @messages.setter
+    def messages(self, msgs):
+        self._messages = msgs if isinstance(msgs, list) else list(msgs)
