@@ -11,7 +11,8 @@ def book_snapshot_to_orders(snap, product):
     timelines = []
     for key in (k for k in snap if k in ['bids', 'asks']):
         for item in snap[key]:
-            orders.append(Order(id=item[2], side=key, product=product))
+            # Remove the leading 's' (for plural) from each 'side'
+            orders.append(Order(id=item[2], side=key[:-1], product=product))
             timelines.append(OrderTimeline(price=item[0],
                                            remaining_size=item[1],
                                            order=orders[-1]))
