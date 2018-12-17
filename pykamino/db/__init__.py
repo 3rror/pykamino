@@ -54,10 +54,9 @@ class Trade(BaseModel):
     NOTE: A trade is a match in price of two orders:
     a "buy" one and a "sell" one.
     """
-    trade_id = BigIntegerField(primary_key=True)
     side = CharField()
     size = CurrencyField()
-    product_id = CharField()
+    product = CharField()
     price = CurrencyField()
     time = DateTimeField()
 
