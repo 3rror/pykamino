@@ -3,49 +3,91 @@ Adapt Coinbase Pro's data structure to our database Models
 """
 
 import cbpro
+import itertools
 from pykamino.db import Order, OrderTimeline, Trade, database
 
+cbpro_client = cbpro.PublicClient()
 
-class FullBookSnapshot:
+
+class MultiProductSnapshot:
     def __init__(self, products=['BTC-USD']):
-        self.orders = set()
-        self.products = products
-        self.timelines = set()
-        self.sequence = 0
+        self.snapshots = {}
+        for p in products:
+            self.snapshots[p] = Snapshot(p)
+        self.sequence = -1
         self.client = cbpro.PublicClient()
     
     def download(self):
         for prod in self.products:
-            book_snap = self.client.get_product_order_book(prod, level=3)
-            new_orders, new_timelines = zip(*self.split_snapshot(book_snap, prod))
-            self.orders.update(new_orders)
-            self.timelines.update(new_timelines)
-        self.sequence = book_snap['sequence']
+            snap = self.snapshots[prod]
+            snap.download()
+            if self.sequence == -1:
+                # Keep the older sequence number among the updates
+                self.sequence = snap.sequence
         return self.sequence
     
-    def insert(self):
-        self.filter_existing()
-        with database.atomic():
-            Order.bulk_create(self.orders)
-            OrderTimeline.bulk_create(self.timelines)
-        self.orders.clear()
-        self.timelines.clear()
+    @property
+    def products(self):
+        return self.snapshots.keys()
 
-    def filter_existing(self):
-        query = Order.select(Order.id).where(Order.id.in_([el.id for el in self.orders])).execute()
-        self.orders.difference_update(query)
-        self.timelines = set(filter(lambda x: x.order in self.orders, self.timelines))
+    def to_models(self):
+        for snapshot in self.snapshots.values():
+            for order, timeline in  snapshot.to_models():
+                yield order, timeline
+
+    def clear(self):
+        for snapshot in self.snapshots.values():
+            snapshot.clear()
+
+    def __iter__(self):
+        for snapshot in self.snapshots.values():
+            for book_order in snapshot:
+                yield book_order
+
+
+    #def filter_existing(self):
+    #    query = Order.select(Order.id).where(Order.id.in_([el.id for el in self.orders])).execute()
+    #    self.orders.difference_update(query)
+    #    self.timelines = set(filter(lambda x: x.order in self.orders, self.timelines))
     
-    @staticmethod
-    def split_snapshot(snap, product):
-        for key in (k for k in snap if k in ['bids', 'asks']):
-            for item in snap[key]:
-                # snap[0]: price; snap[1]: size; snap[2]: uuid
-                # Remove the leading 's' (for plural) from each 'side'
-                order = Order(id=item[2], side=key[:-1], product=product)
-                timeline = OrderTimeline(price=item[0], remaining_size=item[1], order=order)
-                yield (order, timeline)
 
+class Snapshot:
+    def __init__(self, product='BTC-USD'):
+        self.product = product
+        self._snap = {'bid': set(), 'ask': set()}
+        self.sequence = -1
+
+    def download(self):
+        cbpro_snap = cbpro_client.get_product_order_book(self.product, level=3)
+        if self.sequence == -1:
+            # Keep the older sequence number among the updates
+            self.sequence = cbpro_snap['sequence']
+        for side in (k for k in cbpro_snap if k in ['bids', 'asks']):
+            # side[:-1]: Remove the trailing 's' for plural nouns (eg: asks -> ask)
+            self._snap[side[:-1]].update((tuple(order) for order in cbpro_snap[side]))
+
+    def to_models(self):
+        for book_order in self:
+            order = Order(**book_order)
+            book_order.pop('id')
+            timeline = OrderTimeline(order=order, **book_order)
+            yield order, timeline
+    
+    def insert(self):
+        raise NotImplementedError()
+
+    def clear(self):
+        for book_orders in self._snap.values():
+            book_orders.clear()
+
+    def __iter__(self):
+        for side, book_orders in self._snap.items():
+            for order in book_orders:
+                yield {'price': order[0],
+                       'remaining_size': order[1],
+                       'id': order[2],
+                       'product': self.product,
+                       'side': side}
 
 
 def msg_to_order(msg) -> (Order, OrderTimeline):
