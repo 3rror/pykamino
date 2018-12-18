@@ -4,7 +4,7 @@ import threading
 from peewee import ProgrammingError
 
 from pykamino.db import Order, OrderTimeline, Trade, database
-from pykamino.db.cbpro import book_snapshot_to_orders, msg_to_order, msg_to_trade
+from pykamino.db.cbpro import FullBookSnapshot, msg_to_order, msg_to_trade
 
 # This module uses the Observer pattern
 
@@ -19,8 +19,10 @@ class Scraper():
         self.products = products
 
     def start(self):
+        snap = FullBookSnapshot(products=self.products)
         self.receiver.start()
-        seq = self.save_book_snapshot()
+        seq = snap.download()
+        snap.insert()
 
         def is_newer(msg):
             try:
