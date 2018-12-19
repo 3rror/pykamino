@@ -11,36 +11,49 @@ cbpro_client = cbpro.PublicClient()
 
 class MultiProductSnapshot:
     def __init__(self, products=['BTC-USD']):
-        self.snapshots = {}
+        self._snaps = {}
         for p in products:
-            self.snapshots[p] = Snapshot(p)
+            self._snaps[p] = Snapshot(p)
         self.sequence = -1
-        self.client = cbpro.PublicClient()
     
     def download(self):
         for prod in self.products:
-            snap = self.snapshots[prod]
+            snap = self._snaps[prod]
             snap.download()
             if self.sequence == -1:
                 # Keep the older sequence number among the updates
                 self.sequence = snap.sequence
         return self.sequence
-    
+
     @property
     def products(self):
-        return self.snapshots.keys()
+        return self._snaps.keys()
+    
+    @property
+    def snapshots(self):
+        return self._snaps.values()
 
     def to_models(self):
-        for snapshot in self.snapshots.values():
+        for snapshot in self.snapshots:
             for order, timeline in  snapshot.to_models():
                 yield order, timeline
+    
+    def insert(self, clear=True):
+        timelines = (Snapshot._add_order_field(book_order) for book_order in self)
+        with database.atomic():
+            Order.insert_many(self, fields=Order._meta.fields).on_conflict('ignore').execute()
+            OTl.insert_many(timelines, fields=['price',
+                                               'remaining_size',
+                                               'order']).on_conflict('ignore').execute()
+        if clear:
+            self.clear()
 
     def clear(self):
-        for snapshot in self.snapshots.values():
+        for snapshot in self.snapshots:
             snapshot.clear()
 
     def __iter__(self):
-        for snapshot in self.snapshots.values():
+        for snapshot in self.snapshots:
             for book_order in snapshot:
                 yield book_order
 
