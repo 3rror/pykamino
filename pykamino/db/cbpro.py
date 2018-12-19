@@ -4,7 +4,7 @@ Adapt Coinbase Pro's data structure to our database Models
 
 import cbpro
 import itertools
-from pykamino.db import Order, OrderTimeline, Trade, database
+from pykamino.db import Order, OrderTimeline as OTl, Trade, database
 
 cbpro_client = cbpro.PublicClient()
 
@@ -45,12 +45,6 @@ class MultiProductSnapshot:
                 yield book_order
 
 
-    #def filter_existing(self):
-    #    query = Order.select(Order.id).where(Order.id.in_([el.id for el in self.orders])).execute()
-    #    self.orders.difference_update(query)
-    #    self.timelines = set(filter(lambda x: x.order in self.orders, self.timelines))
-    
-
 class Snapshot:
     def __init__(self, product='BTC-USD'):
         self.product = product
@@ -70,13 +64,27 @@ class Snapshot:
         for book_order in self:
             order = Order(**book_order)
             book_order.pop('id')
-            timeline = OrderTimeline(order=order, **book_order)
+            timeline = OTl(order=order, **book_order)
             yield order, timeline
     
-    def insert(self):
-        raise NotImplementedError()
+    @staticmethod
+    def _add_order_field(book_order):
+        new_order = book_order.copy()
+        new_order['order'] = new_order['id']
+        return new_order
+    
+    def insert(self, clear=True):
+        timelines = (self._add_order_field(book_order) for book_order in self)
+        with database.atomic():
+            Order.insert_many(self, fields=Order._meta.fields).on_conflict('ignore').execute()
+            OTl.insert_many(timelines, fields=['price',
+                                               'remaining_size',
+                                               'order']).on_conflict('ignore').execute()
+        if clear:
+            self.clear()
 
     def clear(self):
+        self.sequence = -1
         for book_orders in self._snap.values():
             book_orders.clear()
 
@@ -90,7 +98,7 @@ class Snapshot:
                        'side': side}
 
 
-def msg_to_order(msg) -> (Order, OrderTimeline):
+def msg_to_order(msg) -> (Order, OTl):
     """
     Convert a Coinbase message into an `OrderTimeline` instance, and the related `Order` instance.
 
@@ -109,7 +117,7 @@ def msg_to_order(msg) -> (Order, OrderTimeline):
     if msg['type'] == 'open':
         order = Order(id=msg['order_id'], side=msg['side'], product=msg['product_id'])
     try:
-        timeline = OrderTimeline(remaining_size=msg['remaining_size'],
+        timeline = OTl(remaining_size=msg['remaining_size'],
                                 price=msg['price'],
                                 time=msg['time'],
                                 order=order if order is not None else msg['order_id'],
