@@ -81,7 +81,7 @@ class OrderTimeline(BaseModel):
     price = CurrencyField()
     time = DateTimeField(default=datetime.datetime.now)
     order = ForeignKeyField(Order, backref='timeline')
-    reason = CharField(null=True)
+    closed = CharField(null=True)
 
     class Meta:
         schema = 'data'
