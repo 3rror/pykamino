@@ -61,17 +61,15 @@ class MultiProductSnapshot:
 class Snapshot:
     def __init__(self, product='BTC-USD'):
         self.product = product
-        self._snap = {'bid': set(), 'ask': set()}
+        self._snap = {}
         self.sequence = -1
 
     def download(self):
         cbpro_snap = cbpro_client.get_product_order_book(self.product, level=3)
-        if self.sequence == -1:
-            # Keep the older sequence number among the updates
-            self.sequence = cbpro_snap['sequence']
+        self.sequence = cbpro_snap['sequence']
         for side in (k for k in cbpro_snap if k in ['bids', 'asks']):
             # side[:-1]: Remove the trailing 's' for plural nouns (eg: asks -> ask)
-            self._snap[side[:-1]].update((tuple(order) for order in cbpro_snap[side]))
+            self._snap[side[:-1]] = cbpro_snap[side]
 
     def to_models(self):
         for book_order in self:
