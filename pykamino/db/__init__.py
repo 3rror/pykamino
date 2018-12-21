@@ -85,3 +85,8 @@ class OrderTimeline(BaseModel):
 
     class Meta:
         schema = 'data'
+
+unique_timeline = (OrderTimeline.index(OrderTimeline.remaining_size,
+                   OrderTimeline.price, OrderTimeline.order,
+                   unique=True).where(OrderTimeline.closed==None))
+OrderTimeline.add_index(unique_timeline)
