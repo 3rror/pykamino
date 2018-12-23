@@ -4,7 +4,7 @@ from functools import partial
 
 from peewee import (BigIntegerField, CharField, DateTimeField, DecimalField,
                     ForeignKeyField, Model, MySQLDatabase, PostgresqlDatabase,
-                    Proxy, SqliteDatabase, UUIDField)
+                    Proxy, SqliteDatabase, UUIDField, BooleanField, CompositeKey)
 
 # We want the database to be dinamically defined, so that we
 # can support different DBMSs. In order to do that, we first declare a placeholder.
@@ -63,14 +63,12 @@ class Trade(BaseModel):
     class Meta:
         schema = 'data'
 
-# NOTE: side and product_id could be foreign keys of a table
-# containing the actual values.
-
 
 class Order(BaseModel):
     id = UUIDField(primary_key=True)
     side = CharField()
     product = CharField()
+    is_open = BooleanField(default=True)
 
     class Meta:
         schema = 'data'
@@ -81,12 +79,8 @@ class OrderTimeline(BaseModel):
     price = CurrencyField()
     time = DateTimeField(default=datetime.datetime.now)
     order = ForeignKeyField(Order, backref='timeline')
-    closed = CharField(null=True)
 
     class Meta:
+        primary_key = CompositeKey('order', 'price', 'remaining_size')
         schema = 'data'
 
-unique_timeline = (OrderTimeline.index(OrderTimeline.remaining_size,
-                   OrderTimeline.price, OrderTimeline.order,
-                   unique=True).where(OrderTimeline.closed==None))
-OrderTimeline.add_index(unique_timeline)
