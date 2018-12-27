@@ -4,59 +4,10 @@ Adapt Coinbase Pro's data structure to our database Models
 
 import cbpro
 import itertools
-from pykamino.db import Order, OrderTimeline as OTl, Trade, database
+from pykamino.db import Order, OrderTimeline as OTl, Trade, database, BaseModel
+from peewee import UUIDField, fn
 
 cbpro_client = cbpro.PublicClient()
-
-
-class MultiProductSnapshot:
-    def __init__(self, products=['BTC-USD']):
-        self._snaps = {}
-        for p in products:
-            self._snaps[p] = Snapshot(p)
-        self.sequence = -1
-    
-    def download(self):
-        for prod in self.products:
-            snap = self._snaps[prod]
-            snap.download()
-            if self.sequence == -1:
-                # Keep the older sequence number among the updates
-                self.sequence = snap.sequence
-        return self.sequence
-
-    @property
-    def products(self):
-        return self._snaps.keys()
-    
-    @property
-    def snapshots(self):
-        return self._snaps.values()
-
-    def to_models(self):
-        for snapshot in self.snapshots:
-            for order, timeline in  snapshot.to_models():
-                yield order, timeline
-    
-    def insert(self, clear=True):
-        timelines = (Snapshot._add_order_field(book_order) for book_order in self)
-        with database.atomic():
-            Order.insert_many(self, fields=Order._meta.fields).on_conflict('ignore').execute()
-            OTl.insert_many(timelines, fields=['price',
-                                               'remaining_size',
-                                               'order']).on_conflict('ignore').execute()
-        if clear:
-            self.clear()
-
-    def clear(self):
-        for snapshot in self.snapshots:
-            snapshot.clear()
-
-    def __iter__(self):
-        for snapshot in self.snapshots:
-            for book_order in snapshot:
-                yield book_order
-
 
 class Snapshot:
     def __init__(self, product='BTC-USD'):
@@ -83,14 +34,23 @@ class Snapshot:
         new_order = book_order.copy()
         new_order['order'] = new_order['id']
         return new_order
+
+    def _close_old_orders(self):
+        self.TempSnapshot.create_table()
+        self.TempSnapshot.insert_many(self, fields=['id']).execute()
+        still_open = self.TempSnapshot.select().where(self.TempSnapshot.id==Order.id)
+        Order.update(is_open=False).where(~fn.EXISTS(still_open), Order.is_open==True).execute()
+        self.TempSnapshot.raw('TRUNCATE TABLE temp_snapshot')
     
     def insert(self, clear=True):
         timelines = (self._add_order_field(book_order) for book_order in self)
         with database.atomic():
-            Order.insert_many(self, fields=Order._meta.fields).on_conflict('ignore').execute()
-            OTl.insert_many(timelines, fields=['price',
-                                               'remaining_size',
-                                               'order']).on_conflict('ignore').execute()
+            self._close_old_orders()
+            with database.atomic():
+                Order.insert_many(self, fields=['id', 'side', 'product']).on_conflict('ignore').execute()
+                OTl.insert_many(timelines, fields=['price',
+                                                   'remaining_size',
+                                                   'order']).on_conflict('ignore').execute()
         if clear:
             self.clear()
 
@@ -107,6 +67,13 @@ class Snapshot:
                        'id': order[2],
                        'product': self.product,
                        'side': side}
+
+
+    class TempSnapshot(BaseModel):
+        id = UUIDField(primary_key=True)
+
+        class Meta:
+            temporary = True
 
 
 def msg_to_order(msg) -> (Order, OTl):
