@@ -36,7 +36,6 @@ class Snapshot:
         return new_order
 
     def _close_old_orders(self):
-        self.TempSnapshot.create_table()
         self.TempSnapshot.insert_many(self, fields=['id']).execute()
         still_open = self.TempSnapshot.select().where(self.TempSnapshot.id==Order.id)
         Order.update(is_open=False).where(~fn.EXISTS(still_open), Order.is_open==True).execute()
