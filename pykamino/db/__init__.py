@@ -4,7 +4,7 @@ from functools import partial
 
 from peewee import (BigIntegerField, CharField, DateTimeField, DecimalField,
                     ForeignKeyField, Model, MySQLDatabase, PostgresqlDatabase,
-                    Proxy, SqliteDatabase, UUIDField, BooleanField, CompositeKey)
+                    Proxy, SqliteDatabase, UUIDField, SQL)
 
 # We want the database to be dinamically defined, so that we
 # can support different DBMSs. In order to do that, we first declare a placeholder.
@@ -19,7 +19,9 @@ class Dbms(Enum):
 
 def db_factory(dbms: Dbms, user, psw, host, port, db_name):
     """
-    Set up the database connection with the given parameters.
+    Set up the database connection with the given parameters and create needed
+    tables and schemas.
+
     You must call this function before any operation on the database.
     """
     args = {'database': db_name,
@@ -51,36 +53,36 @@ class Trade(BaseModel):
     """
     Represents the table of trades.
 
-    NOTE: A trade is a match in price of two orders:
+    Note: A trade is a match in price of two orders:
     a "buy" one and a "sell" one.
     """
-    side = CharField()
+    side = CharField(4)
     size = CurrencyField()
-    product = CharField()
+    product = CharField(7)
     price = CurrencyField()
     time = DateTimeField()
 
     class Meta:
-        schema = 'data'
+        schema = 'exchange'
 
 
 class Order(BaseModel):
     id = UUIDField(primary_key=True)
-    side = CharField()
-    product = CharField()
-    is_open = BooleanField(default=True)
-
-    class Meta:
-        schema = 'data'
-
-
-class OrderTimeline(BaseModel):
-    remaining_size = CurrencyField()
+    side = CharField(4)
+    product = CharField(7)
     price = CurrencyField()
-    time = DateTimeField(default=datetime.datetime.now)
-    order = ForeignKeyField(Order, backref='timeline')
+    close_time = DateTimeField(null=True)
 
     class Meta:
-        primary_key = CompositeKey('order', 'price', 'remaining_size')
-        schema = 'data'
+        schema = 'exchange'
+
+
+class OrderHistory(BaseModel):
+    size = CurrencyField()
+    time = DateTimeField(default=datetime.datetime.now)
+    order = ForeignKeyField(Order, backref='history')
+
+    class Meta:
+        constraints = [SQL('UNIQUE (size, order_id)')]
+        schema = 'exchange'
 
