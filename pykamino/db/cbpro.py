@@ -1,5 +1,5 @@
 """
-Adapt Coinbase Pro's data structure to our database Models
+Adapt Coinbase Pro's data structure to our database Models.
 """
 
 from datetime import datetime
@@ -14,6 +14,9 @@ from pykamino.db import Trade, database
 cbpro_client = cbpro.PublicClient()
 
 class Snapshot:
+    """
+    An order book snapshot, i.e. the orders waiting to be filled at a given time.
+    """
     def __init__(self, product='BTC-USD'):
         self.product = product
         self._snap = []
@@ -33,6 +36,14 @@ class Snapshot:
         return self.sequence
 
     def to_models(self):
+        """
+        An iterator over every order in the book, yielding
+        a pair of database models.
+
+        Returns:
+            a tuple at every iteration, composed of an Order instance
+            and a Timeline instance.
+        """
         for book_order in self:
             order = Order(**book_order)
             book_order.pop('id')
@@ -49,9 +60,14 @@ class Snapshot:
         self.TempSnapshot.insert_many(self, fields=['id']).execute()
         in_book = self.TempSnapshot.select().where(self.TempSnapshot.id==Order.id)
         Order.update(close_time=datetime.now()).where(~fn.EXISTS(in_book), Order.close_time==None).execute()
+        # Empty the temporary table
         self.TempSnapshot.raw('TRUNCATE TABLE temp_snapshot')
     
     def insert(self, clear=True):
+        """
+        Store the snapshot in the database.
+        This will also take care of closing orders that are not in the book anymore.
+        """
         timelines = (self._add_order_field(book_order) for book_order in self)
         with database.atomic():
             self._close_old_orders()
@@ -62,6 +78,9 @@ class Snapshot:
             self.clear()
 
     def clear(self):
+        """
+        Get rid of the previously downloaded snapshot.
+        """
         self.sequence = -1
         self._snap.clear()
 
@@ -70,6 +89,11 @@ class Snapshot:
 
 
     class TempSnapshot(BaseModel):
+        """
+        A temporary table in lieu of a `NOT IN` clause for performance reasons.
+        Its purpose is to check what open orders are in the database, but not in the
+        snapshot, so that we know these orders, in reality, are now in a closed state.
+        """
         id = UUIDField(primary_key=True)
 
         class Meta:
