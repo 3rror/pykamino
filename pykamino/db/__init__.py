@@ -41,6 +41,7 @@ def db_factory(dbms: Dbms, user, psw, host, port, db_name):
 
 
 CurrencyField = partial(DecimalField, max_digits=18, decimal_places=8)
+Iso8601DateTimeField = partial(DateTimeField, formats=['%Y-%m-%d %H:%M:%S.%f'])
 
 
 class BaseModel(Model):
@@ -60,7 +61,7 @@ class Trade(BaseModel):
     size = CurrencyField()
     product = CharField(7)
     price = CurrencyField()
-    time = DateTimeField()
+    time = Iso8601DateTimeField()
 
     class Meta:
         schema = 'exchange'
@@ -71,7 +72,7 @@ class Order(BaseModel):
     side = CharField(4)
     product = CharField(7)
     price = CurrencyField()
-    close_time = DateTimeField(null=True)
+    close_time = Iso8601DateTimeField(null=True)
 
     class Meta:
         schema = 'exchange'
@@ -79,7 +80,7 @@ class Order(BaseModel):
 
 class OrderHistory(BaseModel):
     size = CurrencyField()
-    time = DateTimeField(default=datetime.datetime.now)
+    time = Iso8601DateTimeField(default=datetime.datetime.now)
     order = ForeignKeyField(Order, backref='history')
 
     class Meta:
