@@ -50,9 +50,9 @@ class GracefulThread(Thread):
         self._close_cond = Event()
 
     def run(self):
-         while not self._close_cond.is_set():
-             self.task()
-    
+        while not self._close_cond.is_set():
+            self.task()
+
     def task(self):
         raise NotImplementedError()
 
@@ -86,38 +86,42 @@ class Filter(GracefulThread):
         msg_queue.task_done()
         try:
             if msg['sequence'] > self._seqs[msg['product_id']]:
-                with filt_msgs_lock:
-                    filtered_msgs.append(msg)
-                    # TODO: make this magic number less magic
-                    if len(filtered_msgs) >= 200:
-                        filt_msgs_lock.notify_all()
+                self.append_filtered(msg)
         except KeyError:
-            # The message received is probably the header message.
-            # Safe to ignore.
             pass
+
+    def append_filtered(self, msg):
+        with filt_msgs_lock:
+            filtered_msgs.append(msg)
+            # TODO: make this magic number less magic
+            if len(filtered_msgs) >= 200:
+                filt_msgs_lock.notify_all()
 
 
 class MessageStorer(GracefulThread):
     def task(self):
         with filt_msgs_lock:
             filt_msgs_lock.wait()
-            trades = filter(lambda x: x['type']=='match', filtered_msgs)
-            orders = filter(lambda x: x['type'] not in ['activate', 'match', 'received'], filtered_msgs)
+            trades = (m for m in filtered_msgs if m['type'] == 'match')
+            orders = (m for m in filtered_msgs if m['type'] not in
+                      ['activate', 'match', 'received'])
             self.store_messages(orders, trades)
             filtered_msgs.clear()
 
     def store_messages(self, orders, trades):
         new_ord, hist, to_close = self.classify_orders(orders)
         trades = [msg_to_trade_dict(t) for t in trades]
-        updates = Case(Order.id, [(o['id'], datetime.strptime(o['close_time'], '%Y-%m-%dT%H:%M:%S.%fZ')) for o in to_close])
+        updates = Case(Order.id, [(o['id'], datetime.strptime(
+            o['close_time'], '%Y-%m-%dT%H:%M:%S.%fZ')) for o in to_close])
         with database.atomic():
             if trades:
                 Trade.insert_many(trades).execute()
             Order.insert_many(new_ord).execute()
             History.insert_many(hist).execute()
             with database.atomic():
-                Order.update(close_time=updates).where(Order.id.in_([o['id'] for o in to_close])).execute()
-    
+                Order.update(close_time=updates).where(
+                    Order.id.in_([o['id'] for o in to_close])).execute()
+
     def classify_orders(self, orders):
         new_orders = []
         history = []
