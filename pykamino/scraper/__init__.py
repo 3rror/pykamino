@@ -124,7 +124,7 @@ class MessageStorer(GracefulThread):
         to_close = []
         for o in orders:
             if o['type'] == 'done':
-                to_close.append({'id': o['order_id'], 'close_time': o['time']})
+                to_close.append(msg_to_order_dict(o))
             elif o['type'] == 'change':
                 history.append(msg_to_history_dict(o))
             else:

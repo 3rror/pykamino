@@ -81,7 +81,7 @@ def msg_to_order_dict(msg):
         'id': msg['order_id'],
         'side': msg['side'],
         'product': msg['product_id'],
-        'price': msg['price'],
+        'price': msg.get('price'),
         'close_time': msg['time'] if msg['type'] == 'done' else None
     }
 
