@@ -14,7 +14,7 @@ class Service(service.Service):
     def __init__(self, *args, **kwargs):
         super().__init__('cbpro_service',
                          pid_dir=appdirs.user_cache_dir('pykamino'), *args, **kwargs)
-        self.scraper = Scraper(products=cfg['global']['products'])
+        self.scraper = Scraper(None, products=cfg['global']['products'])
 
     def run(self):
         self.scraper.start()
@@ -32,6 +32,7 @@ def run(*args, **kwargs):
     if service.is_running():
         print('Service already running', file=sys.stderr)
     else:
+        service.scraper.buffer_length = kwargs['buffer']
         conf = cfg['scraper']['database']
         db_factory(Dbms(conf['dbms']), conf['user'], conf['password'],
                    conf['hostname'], conf['port'], conf['db_name'])
@@ -39,4 +40,4 @@ def run(*args, **kwargs):
 
 
 def stop(*args, **kwargs):
-    service.stop()
+    service.stop(block=True)

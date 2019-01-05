@@ -5,16 +5,23 @@ import argparse
 parser = argparse.ArgumentParser()
 subparsers = parser.add_subparsers()
 
-scra_parser = subparsers.add_parser('scraper', help='Fetch data from various services')
+scra_parser = subparsers.add_parser(
+    'scraper', help='Fetch data from various services')
 scra_subparsers = scra_parser.add_subparsers()
+
 scra_run_parser = scra_subparsers.add_parser('run', help='Run the daemon')
+scra_run_parser.add_argument(
+    '-b', '--buffer', help='number of messages to buffer before save', type=int, default=1000)
 scra_run_parser.set_defaults(action=scraper.run)
-scra_status_parser = scra_subparsers.add_parser('status', help='Show information about the daemon')
+
+scra_status_parser = scra_subparsers.add_parser(
+    'status', help='Show information about the daemon')
+
 scra_stop_parser = scra_subparsers.add_parser('stop', help='Stop the daemon')
 scra_stop_parser.set_defaults(action=scraper.stop)
 
-feat_parser = subparsers.add_parser('features', help='Calculate features from the downloaded data')
-pred_parser = subparsers.add_parser('predictor', help='Use the features to predict the market')
+feat_parser = subparsers.add_parser(
+    'features', help='Calculate features from the downloaded data')
 
 args = parser.parse_args()
-args.action(args)
+args.action(**vars(args))

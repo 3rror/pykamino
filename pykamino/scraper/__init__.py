@@ -10,15 +10,23 @@ from pykamino.db.cbpro import Snapshot, msg_to_order_dict, msg_to_history_dict, 
 
 
 class Scraper():
-    def __init__(self, products=['BTC-USD']):
+    def __init__(self, buffer_len, products=['BTC-USD']):
         self._seqs = {prod: -1 for prod in products}
         self._receiver = Receiver(products=products)
-        self._filter = Filter(sequences=self._seqs)
+        self._filter = Filter(buffer_len, sequences=self._seqs)
         self._storer = MessageStorer()
 
     @property
     def products(self):
         return self._seqs.keys()
+
+    @property
+    def buffer_length(self):
+        return self._filter.buffer_len
+
+    @buffer_length.setter
+    def buffer_length(self, value):
+        self._filter.buffer_len = value
 
     def save_snapshot(self, product):
         snap = Snapshot(product)
@@ -30,7 +38,7 @@ class Scraper():
         # TODO: don't allow to start an already-started Scraper
         self._receiver.start()
         for p in self.products:
-            # _seqs is a mutable object so it's passed by reference.
+            # _seqs is a mutable object so it's been passed by reference.
             # We don't need to pass it again to _filter
             self._seqs[p] = self.save_snapshot(p)
         self._filter.start()
@@ -45,6 +53,13 @@ class Scraper():
 ### Threading stuff ###
 
 class GracefulThread(Thread):
+    """
+    A thread that can be graceously stopped by calling `stop()`.
+
+    Override `task()` to define its activity. Do note that `task()`
+    will be called in a loop.
+    """
+
     def __init__(self):
         super().__init__()
         self._close_cond = Event()
@@ -77,15 +92,16 @@ class Receiver(cbpro.WebsocketClient):
 
 
 class Filter(GracefulThread):
-    def __init__(self, sequences=None):
+    def __init__(self, buffer_len, sequences=None):
         super().__init__()
-        self._seqs = sequences
+        self.sequences = sequences
+        self.buffer_len = buffer_len
 
     def task(self):
         msg = msg_queue.get()
         msg_queue.task_done()
         try:
-            if msg['sequence'] > self._seqs[msg['product_id']]:
+            if msg['sequence'] > self.sequences[msg['product_id']]:
                 self.append_filtered(msg)
         except KeyError:
             pass
@@ -93,8 +109,7 @@ class Filter(GracefulThread):
     def append_filtered(self, msg):
         with filt_msgs_lock:
             filtered_msgs.append(msg)
-            # TODO: make this magic number less magic
-            if len(filtered_msgs) >= 200:
+            if len(filtered_msgs) >= self.buffer_len:
                 filt_msgs_lock.notify_all()
 
 
@@ -111,7 +126,7 @@ class MessageStorer(GracefulThread):
     def store_messages(self, orders, trades):
         new_ord, hist, to_close = self.classify_orders(orders)
         trades = [msg_to_trade_dict(t) for t in trades]
-        updates = Case(Order.id, [(o['id'], datetime.strptime(
+        id_then_time = Case(Order.id, [(o['id'], datetime.strptime(
             o['close_time'], '%Y-%m-%dT%H:%M:%S.%fZ')) for o in to_close])
         with database.atomic():
             if trades:
@@ -119,7 +134,7 @@ class MessageStorer(GracefulThread):
             Order.insert_many(new_ord).execute()
             History.insert_many(hist).execute()
             with database.atomic():
-                Order.update(close_time=updates).where(
+                Order.update(close_time=id_then_time).where(
                     Order.id.in_([o['id'] for o in to_close])).execute()
 
     def classify_orders(self, orders):
