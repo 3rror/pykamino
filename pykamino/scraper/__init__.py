@@ -1,7 +1,6 @@
 from datetime import datetime
-import itertools
 import cbpro
-from peewee import ProgrammingError, Case
+from peewee import Case
 from queue import Queue
 from threading import Thread, Condition, Event
 
@@ -15,6 +14,7 @@ class Scraper():
         self._receiver = Receiver(products=products)
         self._filter = Filter(buffer_len, sequences=self._seqs)
         self._storer = MessageStorer()
+        self._is_running = False
 
     @property
     def products(self):
@@ -33,21 +33,29 @@ class Scraper():
         seq = snap.download()
         snap.insert()
         return seq
+    
+    @property
+    def is_running(self):
+        return self._is_running
 
     def start(self):
-        # TODO: don't allow to start an already-started Scraper
-        self._receiver.start()
-        for p in self.products:
-            # _seqs is a mutable object so it's been passed by reference.
-            # We don't need to pass it again to _filter
-            self._seqs[p] = self.save_snapshot(p)
-        self._filter.start()
-        self._storer.start()
+        if not self._is_running:
+            self._is_running = True
+            self._receiver.start()
+            for p in self.products:
+                # _seqs is a mutable object so it's been passed by reference.
+                # We don't need to pass it again to _filter
+                self._seqs[p] = self.save_snapshot(p)
+            self._filter.start()
+            self._storer.start()
+        else:
+            raise RuntimeError('The scraper is already running.')
 
     def stop(self):
         self._receiver.stop()
         self._filter.stop()
         self._storer.stop()
+        self._is_running = False
 
 
 ### Threading stuff ###
