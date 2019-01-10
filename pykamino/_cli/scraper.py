@@ -1,6 +1,6 @@
 from pykamino._config import config as cfg
 from pykamino.db import db_factory, Dbms
-from pykamino.scraper import Scraper
+from pykamino.scraper.websocket import Client
 import appdirs
 import service
 import sys
@@ -14,7 +14,7 @@ class Service(service.Service):
     def __init__(self, *args, **kwargs):
         super().__init__('cbpro_service',
                          pid_dir=appdirs.user_cache_dir('pykamino'), *args, **kwargs)
-        self.scraper = Scraper(None, products=cfg['global']['products'])
+        self.scraper = Client(None, products=cfg['global']['products'])
 
     def run(self):
         self.scraper.start()
