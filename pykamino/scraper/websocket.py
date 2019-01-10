@@ -1,14 +1,17 @@
 from datetime import datetime
-import cbpro
-from peewee import Case
 from queue import Queue
-from threading import Thread, Condition, Event
+from threading import Condition, Event, Thread
 
-from pykamino.db import Order, OrderHistory as History, Trade, database
-from pykamino.db.cbpro import Snapshot, msg_to_order_dict, msg_to_history_dict, msg_to_trade_dict
+from cbpro import WebsocketClient
+from peewee import Case
+
+from pykamino.db import Order
+from pykamino.db import OrderHistory as History
+from pykamino.db import Trade, database
+from pykamino.scraper.snapshot import Snapshot
 
 
-class Scraper():
+class Client():
     def __init__(self, buffer_len, products=['BTC-USD']):
         self._seqs = {prod: -1 for prod in products}
         self._receiver = Receiver(products=products)
@@ -33,7 +36,7 @@ class Scraper():
         seq = snap.download()
         snap.insert()
         return seq
-    
+
     @property
     def is_running(self):
         return self._is_running
@@ -88,7 +91,7 @@ filtered_msgs = []
 filt_msgs_lock = Condition()
 
 
-class Receiver(cbpro.WebsocketClient):
+class Receiver(WebsocketClient):
     def __init__(self, **kwargs):
         super().__init__(channels=['full'], **kwargs)
 
@@ -158,3 +161,31 @@ class MessageStorer(GracefulThread):
                 new_orders.append(msg_to_order_dict(o))
                 history.append(msg_to_history_dict(o))
         return new_orders, history, to_close
+
+
+def msg_to_order_dict(msg):
+    return {
+        'id': msg['order_id'],
+        'side': msg['side'],
+        'product': msg['product_id'],
+        'price': msg.get('price'),
+        'close_time': msg['time'] if msg['type'] == 'done' else None
+    }
+
+
+def msg_to_history_dict(msg):
+    return {
+        'size': msg['remaining_size'],
+        'time': msg['time'],
+        'order': msg['order_id']
+    }
+
+
+def msg_to_trade_dict(msg):
+    return {
+        'side': msg['side'],
+        'size': msg['size'],
+        'product': msg['product_id'],
+        'price': msg['price'],
+        'time': msg['time']
+    }

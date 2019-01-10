@@ -1,7 +1,3 @@
-"""
-Adapt Coinbase Pro's data structure to our database Models.
-"""
-
 from datetime import datetime
 
 import cbpro
@@ -13,10 +9,12 @@ from pykamino.db import Trade, database
 
 cbpro_client = cbpro.PublicClient()
 
+
 class Snapshot:
     """
     An order book snapshot, i.e. the orders waiting to be filled at a given time.
     """
+
     def __init__(self, product='BTC-USD'):
         self.product = product
         self._snap = []
@@ -49,7 +47,7 @@ class Snapshot:
             book_order.pop('id')
             timeline = History(order=order, **book_order)
             yield order, timeline
-    
+
     @staticmethod
     def _add_order_field(book_order):
         new_order = book_order.copy()
@@ -59,11 +57,12 @@ class Snapshot:
     def _close_old_orders(self):
         self.TempSnapshot.create_table()
         self.TempSnapshot.insert_many(self, fields=['id']).execute()
-        in_book = self.TempSnapshot.select().where(self.TempSnapshot.id==Order.id)
-        Order.update(close_time=datetime.now()).where(~fn.EXISTS(in_book), Order.close_time==None).execute()
+        in_book = self.TempSnapshot.select().where(self.TempSnapshot.id == Order.id)
+        Order.update(close_time=datetime.now()).where(
+            ~fn.EXISTS(in_book), Order.close_time == None).execute()
         # Empty the temporary table
         self.TempSnapshot.raw('TRUNCATE TABLE temp_snapshot')
-    
+
     def insert(self, clear=True):
         """
         Store the snapshot in the database.
@@ -73,8 +72,10 @@ class Snapshot:
         with database.atomic():
             self._close_old_orders()
             with database.atomic():
-                Order.insert_many(self, fields=['id', 'side', 'price', 'product']).on_conflict('ignore').execute()
-                History.insert_many(timelines, fields=['size', 'order']).on_conflict('ignore').execute()
+                Order.insert_many(self, fields=['id', 'side', 'price', 'product']).on_conflict(
+                    'ignore').execute()
+                History.insert_many(timelines, fields=['size', 'order']).on_conflict(
+                    'ignore').execute()
         if clear:
             self.clear()
 
@@ -88,42 +89,13 @@ class Snapshot:
     def __iter__(self):
         return iter(self._snap)
 
-
     class TempSnapshot(BaseModel):
         """
         A temporary table in lieu of a `NOT IN` clause for performance reasons.
         Its purpose is to check what open orders are in the database, but not in the
         snapshot, so that we know these orders, in reality, are now in a closed state.
         """
-        id = UUIDField(primary_key=True)
+        id = type(Order.id)(primary_key=True)
 
         class Meta:
             temporary = True
-
-
-def msg_to_order_dict(msg):
-    return {
-        'id': msg['order_id'],
-        'side': msg['side'],
-        'product': msg['product_id'],
-        'price': msg.get('price'),
-        'close_time': msg['time'] if msg['type'] == 'done' else None
-    }
-
-
-def msg_to_history_dict(msg):
-    return {
-        'size': msg['remaining_size'],
-        'time': msg['time'],
-        'order': msg['order_id']
-    }
-
-
-def msg_to_trade_dict(msg):
-    return {
-        'side': msg['side'],
-        'size': msg['size'],
-        'product': msg['product_id'],
-        'price': msg['price'],
-        'time': msg['time']
-    }
