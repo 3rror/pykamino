@@ -1,20 +1,21 @@
-from appdirs import user_config_dir
-from setuptools import setup
 import pykamino
+from appdirs import user_config_dir
+from setuptools import find_namespace_packages, setup
 
 setup(
-    name="pykamino",
-    version=pykamino.__version__,
-    description="All-In-One tool for project Naboo",
-    url="https://gitlab-rbl.unipv.it/fforni/pykamino",
-    author="Fabio Forni, Gianluca Andreotti",
-    author_email="fabio.forni01@universitadipavia.it, gianluca.andreotti01@universitadipavia.it",
-    license="Apache 2",
-    packages=["pykamino"],
+    name='pykamino',
+    version='0.1.0',
+    description='All-In-One tool for project Naboo',
+    url='https://gitlab-rbl.unipv.it/fforni/pykamino',
+    author='Fabio Forni, Gianluca Andreotti',
+    author_email='fabio.forni01@universitadipavia.it, gianluca.andreotti01@universitadipavia.it',
+    license='Apache 2',
+    # This is a namespace project as it lacks of __init__.py files
+    packages=find_namespace_packages(),
     zip_safe=True,
-    scripts=["bin/pykamino"],
+    scripts=['bin/pykamino'],
     data_files=[(user_config_dir('pykamino'), [
-                 'pykamino/_config/pykamino.toml'])],
+                 'pykamino/data/pykamino.toml'])],
     install_requires=['appdirs~=1.4.0',
                       'cbpro~=1.1.0',
                       'pandas~=0.23.0',
