@@ -1,9 +1,11 @@
-from pykamino._config import config as cfg
-from pykamino.db import db_factory, Dbms
-from pykamino.scraper.websocket import Client
+import sys
+
 import appdirs
 import service
-import sys
+from pykamino._cli.shared_utils import init_db
+from pykamino._cli.config import config as cfg
+from pykamino.db import Dbms, db_factory
+from pykamino.scraper.websocket import Client
 
 
 class Service(service.Service):
@@ -33,9 +35,7 @@ def run(*args, **kwargs):
         print('Service already running', file=sys.stderr)
     else:
         service.scraper.buffer_length = kwargs['buffer']
-        conf = cfg['scraper']['database']
-        db_factory(Dbms(conf['dbms']), conf['user'], conf['password'],
-                   conf['hostname'], conf['port'], conf['db_name'])
+        init_db()
         service.start()
 
 

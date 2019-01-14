@@ -55,11 +55,11 @@ class TradesDataFrame(DataFrame):
 
     def total_buy_volume(self):
         """Total amount bought."""
-        return round(self.buys().amount.astype(float).sum(), 8)
+        return round(self.buys().size.astype(float).sum(), 8)
 
     def total_sell_volume(self):
         """Total amount sold."""
-        return round(self.sells().amount.astype(float).sum(), 8)
+        return round(self.sells().size.astype(float).sum(), 8)
 
     def price_movement(self):
         """Difference between the oldest and the most recent price."""
@@ -84,7 +84,7 @@ class TradesDataFrame(DataFrame):
 
 def _extract_instant_features(trades, instant, next_instant):
     trades_slice = trades.trades_between_instants(instant, next_instant)
-    features = trades_slice.features()
+    features = trades_slice.compute_all()
     features['time'] = instant
     return features
 
@@ -96,15 +96,14 @@ def _pairwise(iterable):
     return zip(a, b)
 
 
-def trades_in_time_window(start_dt, end_dt, product):
+def trades_in_time_window(start_dt, end_dt, products):
     query = Trade.select().where(Trade.time.between(
-        start_dt, end_dt), Trade.product == product)
-    data = read_sql_query(query.sql(), database.connection())
-    return TradesDataFrame(data)
+        start_dt, end_dt), Trade.product.in_(products))
+    return TradesDataFrame(list(query.dicts()))
 
 
-def extract(start_dt, end_dt, resolution='2min', product='BTC-USD'):
-    trades = database.trades_in_time_window(*start_dt, end_dt)
+def extract(start_dt, end_dt, resolution='1min', products=['BTC-USD']):
+    trades = trades_in_time_window(start_dt, end_dt, products)
     instants = instants = pandas.date_range(
         start=start_dt, end=end_dt, freq=resolution).tolist()
     with multiprocessing.Pool() as pool:
