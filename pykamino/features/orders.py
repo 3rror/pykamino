@@ -1,15 +1,16 @@
+import multiprocessing
 from functools import lru_cache as cache
-from pandas import DataFrame
-from pandas import Series
-import statistics
+from statistics import mean
+
 import numpy as np
 import pandas
+from pykamino.db import database
 
 # Subclassing pandas.DataFrame
 # http://pandas.pydata.org/pandas-docs/stable/extending.html#extending-subclassing-pandas
 
 
-class OrdersSeries(Series):
+class OrdersSeries(pandas.Series):
     @property
     def _constructor(self):
         return OrdersSeries
@@ -19,7 +20,7 @@ class OrdersSeries(Series):
         return OrdersDataFrame
 
 
-class OrdersDataFrame(DataFrame):
+class OrdersDataFrame(pandas.DataFrame):
     @property
     def _constructor(self):
         return OrdersDataFrame
@@ -122,8 +123,8 @@ class OrderBook:
         The mid market price represents an accurate estimate of the true price
         of the asset (BTC in this case) at one instant.
         """
-        mean = statistics.mean([self.best_bid_price(), self.best_ask_price()])
-        return round(mean, 8)
+        m = mean([self.best_bid_price(), self.best_ask_price()])
+        return round(m, 8)
 
     def spread(self):
         """
@@ -240,3 +241,63 @@ class OrderBook:
                 lambda x: abs(1 / -x) ** price_weight
             )
         )
+
+
+query = """
+WITH oh_with_max AS
+(
+  SELECT
+    oh1.size,
+    oh1.time,
+    oh1.order_id
+  FROM
+    exchange.order_history oh1
+    JOIN
+      (
+        SELECT
+          order_id,
+          max(time) AS time
+        FROM
+          exchange.order_history
+        GROUP BY
+          order_id
+      ) oh2
+      ON oh1.order_id = oh2.order_id
+      AND oh1.time = oh2.time
+  WHERE
+    oh1.time <= ?
+)
+SELECT
+  o.*,
+  oh_with_max.size
+FROM
+  exchange.order o
+  JOIN
+    oh_with_max
+    ON o.id = oh_with_max.order_id
+WHERE
+  (o.close_time IS NULL
+  OR o.close_time > ?)
+  AND o.product IN ?
+"""
+
+
+def _order_books_features(orders, timestamp):
+    orders_at_ts = orders.at_timestamp(timestamp)
+    order_book = OrderBook(orders_at_ts, timestamp)
+    return order_book.features()
+
+
+def orders_in_time_window(start_ts, end_ts, products):
+    cur = database.execute_sql(query, params=(end_ts, start_ts, products))
+    return OrdersDataFrame(cur.dicts())
+
+
+def extract(start_dt, end_dt, resolution='1min', products=['BTC-USD']):
+    orders = orders_in_time_window(start_dt, end_dt, products)
+    instants = pandas.date_range(
+        start=start_dt, end=end_dt, freq=resolution).tolist()
+    with multiprocessing.Pool() as pool:
+        params = [(orders, instant) for instant in instants]
+        features = pool.starmap(_order_books_features, params)
+    return features

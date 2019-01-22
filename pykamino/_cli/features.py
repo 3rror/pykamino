@@ -1,6 +1,6 @@
 from pykamino._cli.config import config as cfg
 from pykamino._cli.shared_utils import init_db
-from pykamino.features import exporter, trades
+from pykamino.features import exporter, orders, trades
 
 
 def compute(*args, **kwargs):
@@ -12,10 +12,10 @@ def compute(*args, **kwargs):
               'path': kwargs['path']}
     init_db()
     if category == 'all':
-        export_orders()
+        export_orders(**params)
         export_trades(**params)
     elif category == 'orders':
-        export_orders()
+        export_orders(**params)
     else:
         export_trades(**params)
 
@@ -25,5 +25,6 @@ def export_trades(start_dt, end_dt, res, products, path):
     exporter.features_to_csv(feats, path + '/trades.csv')
 
 
-def export_orders():
-    pass
+def export_orders(start_dt, end_dt, res, products, path):
+    feats = orders.extract(start_dt, end_dt, res, products)
+    exporter.features_to_csv(feats, path + '/orders.csv')
