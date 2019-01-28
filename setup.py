@@ -18,7 +18,7 @@ setup(
                  'pykamino/data/pykamino.toml'])],
     install_requires=['appdirs~=1.4.0',
                       'cbpro~=1.1.0',
-                      'pandas~=0.23.0',
+                      'pandas~=0.24.0',
                       'peewee~=3.8.0',
                       'service~=0.5.0',
                       'toml~=0.10.0',
