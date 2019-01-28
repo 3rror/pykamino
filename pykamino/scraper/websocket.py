@@ -166,7 +166,7 @@ class MessageStorer(GracefulThread):
 def msg_to_order_dict(msg):
     return {
         'id': msg['order_id'],
-        'side': msg['side'],
+        'side': 'ask' if msg['side'] == 'sell' else 'bid',
         'product': msg['product_id'],
         'price': msg.get('price'),
         'close_time': msg['time'] if msg['type'] == 'done' else None
