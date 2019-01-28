@@ -138,7 +138,7 @@ class MessageStorer(GracefulThread):
         new_ord, hist, to_close = self.classify_orders(orders)
         trades = [msg_to_trade_dict(t) for t in trades]
         id_then_time = Case(Order.id, [(o['id'], datetime.strptime(
-            o['close_time'], '%Y-%m-%dT%H:%M:%S.%fZ')) for o in to_close])
+            o['close_time'], Order.close_time.formats[0])) for o in to_close])
         with database.atomic():
             if trades:
                 Trade.insert_many(trades).execute()

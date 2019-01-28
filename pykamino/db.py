@@ -2,9 +2,9 @@ import datetime
 from enum import Enum
 from functools import partial
 
-from peewee import (BigIntegerField, CharField, DateTimeField, DecimalField,
-                    ForeignKeyField, Model, MySQLDatabase, PostgresqlDatabase,
-                    Proxy, SqliteDatabase, UUIDField, SQL)
+from peewee import (SQL, BigIntegerField, CharField, DateTimeField,
+                    DecimalField, ForeignKeyField, Model, MySQLDatabase,
+                    PostgresqlDatabase, Proxy, SqliteDatabase, UUIDField)
 
 # We want the database to be dinamically defined, so that we
 # can support different DBMSs. In order to do that, we first declare a placeholder.
@@ -41,7 +41,8 @@ def db_factory(dbms: Dbms, user, psw, host, port, db_name):
 
 
 CurrencyField = partial(DecimalField, max_digits=18, decimal_places=8)
-Iso8601DateTimeField = partial(DateTimeField, formats=['%Y-%m-%d %H:%M:%S.%f'])
+Iso8601DateTimeField = partial(DateTimeField, formats=[
+                               '%Y-%m-%dT%H:%M:%S.%fZ'])
 
 
 class BaseModel(Model):
@@ -86,4 +87,3 @@ class OrderHistory(BaseModel):
     class Meta:
         constraints = [SQL('UNIQUE (size, order_id)')]
         schema = 'exchange'
-
