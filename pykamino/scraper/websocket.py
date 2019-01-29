@@ -175,7 +175,7 @@ def msg_to_order_dict(msg):
 
 def msg_to_history_dict(msg):
     return {
-        'size': msg['remaining_size'],
+        'amount': msg['remaining_size'],
         'time': msg['time'],
         'order': msg['order_id']
     }
@@ -184,7 +184,7 @@ def msg_to_history_dict(msg):
 def msg_to_trade_dict(msg):
     return {
         'side': msg['side'],
-        'size': msg['size'],
+        'amount': msg['size'],
         'product': msg['product_id'],
         'price': msg['price'],
         'time': msg['time']

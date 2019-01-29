@@ -59,7 +59,7 @@ class Trade(BaseModel):
     a "buy" one and a "sell" one.
     """
     side = CharField(4)
-    size = CurrencyField()
+    amount = CurrencyField()
     product = CharField(7)
     price = CurrencyField()
     time = Iso8601DateTimeField()
@@ -80,7 +80,7 @@ class Order(BaseModel):
 
 
 class OrderHistory(BaseModel):
-    size = CurrencyField()
+    amount = CurrencyField()
     time = Iso8601DateTimeField(default=datetime.datetime.now)
     order = ForeignKeyField(Order, backref='history')
 

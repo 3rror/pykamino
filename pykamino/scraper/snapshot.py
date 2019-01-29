@@ -27,7 +27,7 @@ class Snapshot:
             for order in cbpro_snap[side]:
                 # side[:-1]: Remove the trailing 's' for plural nouns (eg: asks -> ask)
                 self._snap.append({'price': order[0],
-                                   'size': order[1],
+                                   'amount': order[1],
                                    'id': order[2],
                                    'product': self.product,
                                    'side': side[:-1]})
@@ -74,7 +74,7 @@ class Snapshot:
             with database.atomic():
                 Order.insert_many(self, fields=['id', 'side', 'price', 'product']).on_conflict(
                     'ignore').execute()
-                History.insert_many(timelines, fields=['size', 'order']).on_conflict(
+                History.insert_many(timelines, fields=['amount', 'order']).on_conflict(
                     'ignore').execute()
         if clear:
             self.clear()

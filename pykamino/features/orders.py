@@ -1,10 +1,11 @@
 import multiprocessing
+from datetime import datetime
 from functools import lru_cache as cache
 from statistics import mean
 
 import numpy as np
 import pandas
-from pykamino.db import database
+from pykamino.db import Order, OrderHistory, database
 
 # Subclassing pandas.DataFrame
 # http://pandas.pydata.org/pandas-docs/stable/extending.html#extending-subclassing-pandas
@@ -31,8 +32,8 @@ class OrdersDataFrame(pandas.DataFrame):
 
     def at_timestamp(self, timestamp):
         """Extract a subset of orders that are open in specified timestamp."""
-        filter = (self.insert_ts <= timestamp) & (
-            (self.remove_ts > timestamp) | self.remove_ts.isnull()
+        filter = (self.time <= timestamp) & (
+            (self.close_time > timestamp) | self.close_time.isnull()
         )
         return self[filter]
 
@@ -69,7 +70,7 @@ class OrderBook:
         """
         return (
             self.asks()
-            .sort_values(["price", "amount"], ascending=[True, False])
+            .sort_values(["price", "size"], ascending=[True, False])
             .iloc[0]
         )
 
@@ -82,7 +83,7 @@ class OrderBook:
         """
         return (
             self.bids()
-            .sort_values(["price", "amount"], ascending=[True, False])
+            .sort_values(["price", "size"], ascending=[True, False])
             .iloc[-1]
         )
 
@@ -146,13 +147,12 @@ class OrderBook:
 
     @cache(maxsize=1)
     def ask_depth_chart(self):
-        return (
+        return  (
             self.asks()
             .sort_values(by="price")
             .groupby("price")
-            .sum()
-            .amount.cumsum()
-            .reset_index()
+            .sum().amount
+            .cumsum().reset_index()
         )
 
     @cache(maxsize=1)
@@ -161,8 +161,8 @@ class OrderBook:
             self.bids()
             .sort_values(by="price")
             .groupby("price")
-            .sum()
-            .amount.iloc[::-1]
+            .sum().amount
+            .iloc[::-1]
             .cumsum()
             .iloc[::-1]
             .reset_index()
@@ -243,11 +243,17 @@ class OrderBook:
         )
 
 
-query = """
+def _order_books_features(orders, timestamp):
+    orders_at_ts = orders.at_timestamp(timestamp)
+    order_book = OrderBook(orders_at_ts, timestamp)
+    return order_book.features()
+
+
+_query = """
 WITH oh_with_max AS
 (
   SELECT
-    oh1.size,
+    oh1.amount,
     oh1.time,
     oh1.order_id
   FROM
@@ -265,11 +271,15 @@ WITH oh_with_max AS
       ON oh1.order_id = oh2.order_id
       AND oh1.time = oh2.time
   WHERE
-    oh1.time <= ?
+    oh1.time <= %s
 )
+---
 SELECT
-  o.*,
-  oh_with_max.size
+  o.side,
+  o.price,
+  o.close_time,
+  oh_with_max.time,
+  oh_with_max.amount
 FROM
   exchange.order o
   JOIN
@@ -277,23 +287,25 @@ FROM
     ON o.id = oh_with_max.order_id
 WHERE
   (o.close_time IS NULL
-  OR o.close_time > ?)
-  AND o.product IN ?
+  OR o.close_time > %s)
+  AND o.product IN %s
 """
 
 
-def _order_books_features(orders, timestamp):
-    orders_at_ts = orders.at_timestamp(timestamp)
-    order_book = OrderBook(orders_at_ts, timestamp)
-    return order_book.features()
-
-
 def orders_in_time_window(start_ts, end_ts, products):
-    cur = database.execute_sql(query, params=(end_ts, start_ts, products))
-    return OrdersDataFrame(cur.dicts())
+    start = datetime.strftime(start_ts, Order.close_time.formats[0])
+    end = datetime.strftime(end_ts, OrderHistory.time.formats[0])
+    data = pandas.read_sql_query(
+        _query,
+        con=database.connection(),
+        params=(end, start, tuple(products)),
+    )
+    return OrdersDataFrame(data)
 
 
 def extract(start_dt, end_dt, resolution='1min', products=['BTC-USD']):
+    # orders_in_time_window is used to cache what we're about to analyze
+    # in RAM within a single pass. We don't want to continuously query the DB.
     orders = orders_in_time_window(start_dt, end_dt, products)
     instants = pandas.date_range(
         start=start_dt, end=end_dt, freq=resolution).tolist()
