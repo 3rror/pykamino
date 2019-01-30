@@ -1,8 +1,8 @@
 from datetime import datetime
 
 import cbpro
-from peewee import UUIDField, fn
 
+from peewee import UUIDField, fn
 from pykamino.db import BaseModel, Order
 from pykamino.db import OrderHistory as History
 from pykamino.db import Trade, database

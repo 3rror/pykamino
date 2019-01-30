@@ -2,9 +2,9 @@ import multiprocessing
 from itertools import tee
 
 import pandas
-from pandas import DataFrame, Series, read_sql_query
+from pandas import DataFrame, Series
 
-from pykamino.db import Trade, database
+from pykamino.db import Trade
 
 
 class TradesSeries(Series):

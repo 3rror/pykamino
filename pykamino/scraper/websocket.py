@@ -3,8 +3,8 @@ from queue import Queue
 from threading import Condition, Event, Thread
 
 from cbpro import WebsocketClient
-from peewee import Case
 
+from peewee import Case
 from pykamino.db import Order
 from pykamino.db import OrderHistory as History
 from pykamino.db import Trade, database
