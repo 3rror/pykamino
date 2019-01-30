@@ -1,13 +1,8 @@
-import os.path
-import pandas
+import csv
 
 
-def _dataframe_to_csv(dataframe, csv_path):
-    # If file exists, don't add csv headers
-    add_csv_header = not os.path.isfile(csv_path)
-    dataframe.to_csv(csv_path, mode="a", header=add_csv_header, index=False)
-
-
-def features_to_csv(features_list, path):
-    df = pandas.DataFrame(features_list)
-    _dataframe_to_csv(df, path)
+def features_to_csv(features, path):
+    with open(path, 'w') as csvfile:
+        writer = csv.DictWriter(csvfile, features[0].keys())
+        writer.writeheader()
+        writer.writerows(features)
