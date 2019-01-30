@@ -58,7 +58,7 @@ class OrderBook:
     @cache(maxsize=1)
     def bids(self):
         """Bid orders ordered by price."""
-        bids_only_mask = self.orders.side == "bids"
+        bids_only_mask = self.orders.side == "bid"
         return self.orders[bids_only_mask]
 
     @cache(maxsize=1)
@@ -245,6 +245,8 @@ class OrderBook:
 
 def _order_books_features(orders, timestamp):
     orders_at_ts = orders.at_timestamp(timestamp)
+    if orders_at_ts.empty:
+        return None
     order_book = OrderBook(orders_at_ts, timestamp)
     return order_book.features()
 
