@@ -1,10 +1,13 @@
-import multiprocessing
+import os
+from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime
 from functools import lru_cache as cache
+from itertools import repeat
 from statistics import mean
 
 import numpy as np
 import pandas
+
 from pykamino.db import Order, OrderHistory, database
 
 # Subclassing pandas.DataFrame
@@ -147,7 +150,7 @@ class OrderBook:
 
     @cache(maxsize=1)
     def ask_depth_chart(self):
-        return  (
+        return (
             self.asks()
             .sort_values(by="price")
             .groupby("price")
@@ -311,7 +314,7 @@ def extract(start_dt, end_dt, resolution='1min', products=['BTC-USD']):
     orders = orders_in_time_window(start_dt, end_dt, products)
     instants = pandas.date_range(
         start=start_dt, end=end_dt, freq=resolution).tolist()
-    with multiprocessing.Pool() as pool:
-        params = [(orders, instant) for instant in instants]
-        features = pool.starmap(_order_books_features, params)
+    usable_cores = len(os.sched_getaffinity(0))
+    with ProcessPoolExecutor(max_workers=usable_cores) as pool:
+        features = pool.map(_order_books_features, repeat(orders), instants)
     return features
