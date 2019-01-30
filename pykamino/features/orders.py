@@ -317,4 +317,5 @@ def extract(start_dt, end_dt, resolution='1min', products=['BTC-USD']):
     usable_cores = len(os.sched_getaffinity(0))
     with ProcessPoolExecutor(max_workers=usable_cores) as pool:
         features = pool.map(_order_books_features, repeat(orders), instants)
+    features = [f for f in features if f is not None]
     return features
