@@ -23,7 +23,7 @@ After the installation, you'll find a file named `pykamino.toml` inside your con
 
 ### Features
 
-To extract features, run `pykamino category start end [resolution]`.  
+To extract features, run `pykamino category start end resolution`.  
 - **category**: choose from "orders", "trades" or "all"
 - **start**: date and time in ISO8601 format (e.g. '2010-01-01 11:00:00.00'. Microseconds are optional)
 - **end**: ditto
