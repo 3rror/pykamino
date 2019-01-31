@@ -1,7 +1,6 @@
 from datetime import datetime
 
 import cbpro
-
 from peewee import UUIDField, fn
 from pykamino.db import BaseModel, Order
 from pykamino.db import OrderHistory as History
@@ -61,7 +60,8 @@ class Snapshot:
         Order.update(close_time=datetime.now()).where(
             ~fn.EXISTS(in_book), Order.close_time == None).execute()
         # Empty the temporary table
-        self.TempSnapshot.raw('TRUNCATE TABLE temp_snapshot')
+        self.TempSnapshot.raw('TRUNCATE TABLE {}'.format(
+            self.TempSnapshot._meta.table_name))
 
     def insert(self, clear=True):
         """
