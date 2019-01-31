@@ -1,4 +1,3 @@
-import pykamino
 from appdirs import user_config_dir
 from setuptools import find_namespace_packages, setup
 
