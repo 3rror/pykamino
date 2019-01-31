@@ -32,7 +32,7 @@ service = Service()
 ### CLI commands ###
 def run(*args, **kwargs):
     if service.is_running():
-        print('Service already running', file=sys.stderr)
+        print('The service is already running', file=sys.stderr)
     else:
         service.scraper.buffer_length = kwargs['buffer']
         init_db()
@@ -40,4 +40,7 @@ def run(*args, **kwargs):
 
 
 def stop(*args, **kwargs):
-    service.stop(block=True)
+    if not service.is_running():
+        print('The service is not running', file=sys.stderr)
+    else:
+        service.stop(block=True)
