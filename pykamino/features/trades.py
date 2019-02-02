@@ -39,7 +39,7 @@ class TradesDataFrame(DataFrame):
 
     def mean_price(self):
         """Mean price."""
-        return round(self.price.astype(float).mean(), 8)
+        return round(self.price.mean(), 8)
 
     def std_price(self):
         """Standard deviation of prices."""
@@ -55,11 +55,11 @@ class TradesDataFrame(DataFrame):
 
     def total_buy_volume(self):
         """Total amount bought."""
-        return round(self.buys().amount.astype(float).sum(), 8)
+        return round(self.buys().amount.sum(), 8)
 
     def total_sell_volume(self):
         """Total amount sold."""
-        return round(self.sells().amount.astype(float).sum(), 8)
+        return round(self.sells().amount.sum(), 8)
 
     def price_movement(self):
         """Difference between the oldest and the most recent price."""
@@ -68,7 +68,7 @@ class TradesDataFrame(DataFrame):
             index_last = self.id.idxmax()
             first_trade = self.loc[index_first]
             last_trade = self.loc[index_last]
-            return round(float(first_trade.price) - float(last_trade.price), 8)
+            return round(first_trade.price - last_trade.price, 8)
 
     def compute_all(self):
         return {
