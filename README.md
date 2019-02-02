@@ -14,7 +14,7 @@ Do note that in order to function, `pykamino` has to connect to a relational dat
 
 ## Configuration
 
-After the installation, you'll find a file named `pykamino.toml` inside your config directory: `$XDG_CONFIG_HOME/pykamino` on Linux, `~/Library/Application Support/pykamino/pykamino.toml` on macOS. Edit it according to your database and products you want to consider.
+After the installation, you'll find a file named `pykamino.toml` inside your config directory: `$XDG_CONFIG_HOME/pykamino` on Linux, `~/Library/Application Support/pykamino/` on macOS. Edit it according to your database and products you want to consider.
 
 ## Usage
 
