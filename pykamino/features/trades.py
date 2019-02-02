@@ -55,11 +55,11 @@ class TradesDataFrame(DataFrame):
 
     def total_buy_volume(self):
         """Total amount bought."""
-        return round(self.buys().size.astype(float).sum(), 8)
+        return round(self.buys().amount.astype(float).sum(), 8)
 
     def total_sell_volume(self):
         """Total amount sold."""
-        return round(self.sells().size.astype(float).sum(), 8)
+        return round(self.sells().amount.astype(float).sum(), 8)
 
     def price_movement(self):
         """Difference between the oldest and the most recent price."""

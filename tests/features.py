@@ -34,7 +34,9 @@ class TradeFeatures(unittest.TestCase):
     
     def test_buy_count(self):
         self.assertEqual(self.dataframe.buy_count(), 10)
-
+    
+    def test_sell_count(self):
+        self.assertEqual(self.dataframe.sell_count, 10)
 
 if __name__ == '__main__':
     unittest.main()
