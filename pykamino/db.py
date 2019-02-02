@@ -17,7 +17,7 @@ class Dbms(Enum):
     SQLITE = 'sqlite'
 
 
-def db_factory(dbms: Dbms, user, psw, host, port, db_name):
+def db_factory(dbms: Dbms, db_name, user=None, psw=None, host=None, port=None):
     """
     Set up the database connection with the given parameters and create needed
     tables and schemas.

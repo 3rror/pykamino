@@ -4,5 +4,5 @@ from pykamino.db import Dbms, db_factory
 
 def init_db():
     conf = cfg['scraper']['database']
-    db_factory(Dbms(conf['dbms']), conf['user'], conf['password'],
-               conf['hostname'], conf['port'], conf['db_name'])
+    db_factory(Dbms(conf['dbms']), conf['db_name'], user=conf['user'],
+                    psw=conf['password'], host=conf['hostname'], port=conf['port'])
