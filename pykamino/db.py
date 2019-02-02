@@ -64,9 +64,6 @@ class Trade(BaseModel):
     price = CurrencyField()
     time = Iso8601DateTimeField()
 
-    class Meta:
-        schema = 'exchange'
-
 
 class Order(BaseModel):
     id = UUIDField(primary_key=True)
@@ -75,9 +72,6 @@ class Order(BaseModel):
     price = CurrencyField()
     close_time = Iso8601DateTimeField(null=True)
 
-    class Meta:
-        schema = 'exchange'
-
 
 class OrderHistory(BaseModel):
     amount = CurrencyField()
@@ -85,5 +79,4 @@ class OrderHistory(BaseModel):
     order = ForeignKeyField(Order, backref='history')
 
     class Meta:
-        constraints = [SQL('UNIQUE (size, order_id)')]
-        schema = 'exchange'
+        constraints = [SQL('UNIQUE (amount, order_id)')]
