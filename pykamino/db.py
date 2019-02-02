@@ -34,7 +34,7 @@ def db_factory(dbms: Dbms, db_name, user=None, psw=None, host=None, port=None):
     elif dbms == Dbms.POSTGRES:
         db = PostgresqlDatabase(**args)
     elif dbms == Dbms.SQLITE:
-        db = SqliteDatabase(**args)
+        db = SqliteDatabase(db_name)
     database.initialize(db)
     database.create_tables(BaseModel.__subclasses__())
     return database
