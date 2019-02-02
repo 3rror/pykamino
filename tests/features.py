@@ -28,15 +28,26 @@ class TradeFeatures(unittest.TestCase):
 
     def test_mean_price(self):
         self.assertEqual(self.dataframe.mean_price(), 6250)
-    
+
     def test_std_price(self):
-        self.assertAlmostEqual(self.dataframe.std_price(), 	2958.03989154, places=7)
-    
+        self.assertAlmostEqual(self.dataframe.std_price(),
+                               2958.03989154, delta=1e-8)
+
     def test_buy_count(self):
         self.assertEqual(self.dataframe.buy_count(), 10)
-    
+
     def test_sell_count(self):
-        self.assertEqual(self.dataframe.sell_count, 10)
+        self.assertEqual(self.dataframe.sell_count(), 10)
+
+    def test_total_buy_volume(self):
+        self.assertEqual(self.dataframe.total_buy_volume(), 15.5)
+
+    def test_total_sell_volume(self):
+        self.assertEqual(self.dataframe.total_sell_volume(), 5.5)
+
+    def test_price_movement(self):
+        self.assertEqual(self.dataframe.price_movement(), -9500)
+
 
 if __name__ == '__main__':
     unittest.main()
