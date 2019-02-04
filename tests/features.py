@@ -77,6 +77,12 @@ class TradeFeatures(unittest.TestCase):
     def test_price_movement(self):
         self.assertEqual(self.dataframe.price_movement(), -9500)
 
+    def test_extract_subset(self):
+        self.assertEqual(
+            self.dataframe.trades_between_instants(
+                datetime(2010, 1, 30, 11, 00), datetime(2010, 1, 30, 11, 46)).id.tolist(),
+            list(range(1, 6)))
+
     # TODO: test CSV generation, not only calculations
 
 
