@@ -41,8 +41,10 @@ def db_factory(dbms: Dbms, db_name, user=None, psw=None, host=None, port=None):
 
 
 CurrencyField = partial(DecimalField, max_digits=18, decimal_places=8)
-Iso8601DateTimeField = partial(DateTimeField, formats=[
-                               '%Y-%m-%dT%H:%M:%S.%fZ'])
+Iso8601DateTimeField = partial(DateTimeField,
+                               formats=['%Y-%m-%dT%H:%M:%S.%fZ', '%Y-%m-%dT%H:%M:%S.%f',
+                                        # This one is for SQLite
+                                        '%Y-%m-%d %H:%M:%f'])
 
 
 class BaseModel(Model):
