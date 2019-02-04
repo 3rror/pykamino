@@ -1,30 +1,14 @@
 import multiprocessing
+from datetime import datetime
 from itertools import tee
 
 import pandas
-from pandas import DataFrame, Series
-
 from pykamino.db import Trade
 
 
-class TradesSeries(Series):
-    @property
-    def _constructor(self):
-        return TradesSeries
+class TradesDataFrame(pandas.DataFrame):
 
-    @property
-    def _constructor_expanddim(self):
-        return TradesDataFrame
-
-
-class TradesDataFrame(DataFrame):
-    @property
-    def _constructor(self):
-        return TradesDataFrame
-
-    @property
-    def _constructor_sliced(self):
-        return TradesSeries
+    ROUND_DIGITS = 8
 
     def trades_between_instants(self, start_ts, end_ts):
         return self[self.time.between(start_ts, end_ts)]
@@ -37,13 +21,13 @@ class TradesDataFrame(DataFrame):
         """Trades of type 'sell'."""
         return self[self.side == "sell"]
 
-    def mean_price(self):
+    def price_mean(self):
         """Mean price."""
-        return round(self.price.mean(), 8)
+        return round(self.price.mean(), self.ROUND_DIGITS)
 
-    def std_price(self):
+    def price_std(self):
         """Standard deviation of prices."""
-        return round(self.price.astype(float).std(), 8)
+        return round(self.price.astype(float).std(), self.ROUND_DIGITS)
 
     def buy_count(self):
         """Number of 'buy' trades."""
@@ -55,29 +39,28 @@ class TradesDataFrame(DataFrame):
 
     def total_buy_volume(self):
         """Total amount bought."""
-        return round(self.buys().amount.sum(), 8)
+        return round(self.buys().amount.sum(), self.ROUND_DIGITS)
 
     def total_sell_volume(self):
         """Total amount sold."""
-        return round(self.sells().amount.sum(), 8)
+        return round(self.sells().amount.sum(), self.ROUND_DIGITS)
 
     def price_movement(self):
         """Difference between the oldest and the most recent price."""
-        if len(self) >= 1:
-            index_first = self.id.idxmin()
-            index_last = self.id.idxmax()
-            first_trade = self.loc[index_first]
-            last_trade = self.loc[index_last]
-            return round(first_trade.price - last_trade.price, 8)
+        if len(self) <= 1:
+            return 0
+        first_trade = self.loc[self.time.idxmin()]
+        last_trade = self.loc[self.time.idxmax()]
+        return round(first_trade.price - last_trade.price, self.ROUND_DIGITS)
 
     def compute_all(self):
         return {
             "buy_count": self.buy_count(),
             "sell_count": self.sell_count(),
-            "total_buy_volume": round(self.total_buy_volume(), 8),
-            "total_sell_volume": round(self.total_sell_volume(), 8),
-            "price_mean": self.mean_price(),
-            "price_std": self.std_price(),
+            "total_buy_volume": self.total_buy_volume(),
+            "total_sell_volume": self.total_sell_volume(),
+            "price_mean": self.price_mean(),
+            "price_std": self.price_std(),
             "price_movement": self.price_movement(),
         }
 

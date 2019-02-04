@@ -1,5 +1,6 @@
 import unittest
 from datetime import datetime, timedelta
+from decimal import Decimal
 
 from pykamino.db import Dbms, Order, OrderHistory, Trade, db_factory
 from pykamino.features.trades import TradesDataFrame, extract
@@ -47,7 +48,7 @@ class TradeFeatures(unittest.TestCase):
         for i in range(0, 20):
             data.append((i + 1,
                          'sell' if i < 10 else 'buy',
-                         0.1 + 0.1 * i,
+                         Decimal('0.1') * (i+1),
                          'BTC-USD',
                          1500 + 500 * i,
                          dt + timedelta(minutes=10 * i)))
@@ -55,10 +56,10 @@ class TradeFeatures(unittest.TestCase):
         cls.dataframe = TradesDataFrame(list(Trade.select().dicts()))
 
     def test_mean_price(self):
-        self.assertEqual(self.dataframe.mean_price(), 6250)
+        self.assertEqual(self.dataframe.price_mean(), 6250)
 
     def test_std_price(self):
-        self.assertAlmostEqual(self.dataframe.std_price(),
+        self.assertAlmostEqual(self.dataframe.price_std(),
                                2958.03989154, delta=1e-8)
 
     def test_buy_count(self):
