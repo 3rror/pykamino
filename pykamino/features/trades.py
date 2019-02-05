@@ -81,7 +81,7 @@ def _pairwise(iterable):
 
 def trades_in_time_window(start_dt, end_dt, products):
     query = Trade.select().where(Trade.time.between(
-        start_dt, end_dt), Trade.product.in_(products))
+        start_dt, end_dt) & Trade.product.in_(products))
     return TradesDataFrame(list(query.dicts()))
 
 
