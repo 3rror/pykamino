@@ -1,5 +1,5 @@
 import os
-from concurrent.futures import ProcessPoolExecutor
+from multiprocessing import Pool
 from datetime import datetime
 from functools import lru_cache as cache
 from itertools import repeat
@@ -283,7 +283,7 @@ def extract(start_dt, end_dt, resolution='1min', products=['BTC-USD']):
     instants = pandas.date_range(
         start=start_dt, end=end_dt, freq=resolution).tolist()
     usable_cores = len(os.sched_getaffinity(0))
-    with ProcessPoolExecutor(max_workers=usable_cores) as pool:
-        features = pool.map(_order_books_features, repeat(orders), instants)
+    with Pool(usable_cores) as pool:
+        features = pool.starmap(_order_books_features, zip(repeat(orders), instants))
     features = [f for f in features if f is not None]
     return features
