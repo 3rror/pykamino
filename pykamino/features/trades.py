@@ -47,7 +47,9 @@ class TradesDataFrame(pandas.DataFrame):
 
     def price_movement(self):
         """Difference between the oldest and the most recent price."""
-        if len(self) <= 1:
+        if len(self) == 0:
+            return None
+        if len(self) == 1:
             return 0
         first_trade = self.loc[self.time.idxmin()]
         last_trade = self.loc[self.time.idxmax()]
@@ -72,13 +74,6 @@ def _extract_instant_features(trades, instant, next_instant):
     return features
 
 
-def _pairwise(iterable):
-    # https://docs.python.org/3.6/library/itertools.html#recipes
-    a, b = tee(iterable)
-    next(b, None)
-    return zip(a, b)
-
-
 def trades_in_time_window(start_dt, end_dt, products):
     query = Trade.select().where(Trade.time.between(
         start_dt, end_dt) & Trade.product.in_(products))
@@ -86,11 +81,17 @@ def trades_in_time_window(start_dt, end_dt, products):
 
 
 def extract(start_dt, end_dt, resolution='1min', products=['BTC-USD']):
+    def pairwise(iterable):
+        # https://docs.python.org/3.6/library/itertools.html#recipes
+        a, b = tee(iterable)
+        next(b, None)
+        return zip(a, b)
+
     trades = trades_in_time_window(start_dt, end_dt, products)
     instants = instants = pandas.date_range(
         start=start_dt, end=end_dt, freq=resolution).tolist()
     with multiprocessing.Pool() as pool:
         params = [(trades, instant, next_instant)
-                  for instant, next_instant in _pairwise(instants)]
+                  for instant, next_instant in pairwise(instants)]
         features = pool.starmap(_extract_instant_features, params)
     return features
