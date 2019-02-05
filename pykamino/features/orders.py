@@ -7,8 +7,8 @@ from statistics import mean
 
 import numpy as np
 import pandas
-
-from pykamino.db import Order, OrderHistory, database
+from peewee import fn
+from pykamino.db import Order, OrderHistory
 
 # Subclassing pandas.DataFrame
 # http://pandas.pydata.org/pandas-docs/stable/extending.html#extending-subclassing-pandas
@@ -254,58 +254,26 @@ def _order_books_features(orders, timestamp):
     return order_book.features()
 
 
-_query = """
-WITH oh_with_max AS
-(
-  SELECT
-    oh1.amount,
-    oh1.time,
-    oh1.order_id
-  FROM
-    exchange.order_history oh1
-    JOIN
-      (
-        SELECT
-          order_id,
-          max(time) AS time
-        FROM
-          exchange.order_history
-        GROUP BY
-          order_id
-      ) oh2
-      ON oh1.order_id = oh2.order_id
-      AND oh1.time = oh2.time
-  WHERE
-    oh1.time <= %s
-)
----
-SELECT
-  o.side,
-  o.price,
-  o.close_time,
-  oh_with_max.time,
-  oh_with_max.amount
-FROM
-  exchange.order o
-  JOIN
-    oh_with_max
-    ON o.id = oh_with_max.order_id
-WHERE
-  (o.close_time IS NULL
-  OR o.close_time > %s)
-  AND o.product IN %s
-"""
+def _cache_query(start_dt, end_dt, products):
+    Oh = OrderHistory
+    O = Order
+    max_per_id = (Oh.
+                  select(Oh.order_id, fn.MAX(Oh.time).alias('time'))
+                  .group_by(Oh.order_id))
+    oh_with_max = (Oh
+                   .select(Oh.amount, Oh.time, Oh.order_id)
+                   .join(max_per_id, on=((Oh.order_id == max_per_id.c.order_id) &
+                                         (Oh.time == max_per_id.c.time)))
+                   .where(Oh.time <= end_dt))
+    query = (Order.select(O.side, O.price, O.close_time, oh_with_max.c.time, oh_with_max.c.amount)
+             .join(oh_with_max, on=(O.id == oh_with_max.c.order_id))
+             .where(((O.close_time == None) | (O.close_time > start_dt)) &
+                    O.product.in_(products)))
+    return query
 
 
 def orders_in_time_window(start_ts, end_ts, products):
-    start = datetime.strftime(start_ts, Order.close_time.formats[0])
-    end = datetime.strftime(end_ts, OrderHistory.time.formats[0])
-    data = pandas.read_sql_query(
-        _query,
-        con=database.connection(),
-        params=(end, start, tuple(products)),
-    )
-    return OrdersDataFrame(data)
+    return OrdersDataFrame(list(_cache_query(start_ts, end_ts, products).dicts()))
 
 
 def extract(start_dt, end_dt, resolution='1min', products=['BTC-USD']):
