@@ -1,68 +1,31 @@
 import os
-from multiprocessing import Pool
 from datetime import datetime
 from functools import lru_cache as cache
 from itertools import repeat
+from multiprocessing import Pool
 from statistics import mean
 
 import numpy as np
 import pandas
-from peewee import fn
-from pykamino.db import Order, OrderHistory
-
-# Subclassing pandas.DataFrame
-# http://pandas.pydata.org/pandas-docs/stable/extending.html#extending-subclassing-pandas
+from pandas.api.extensions import register_dataframe_accessor
+from pykamino.db import Order as O
+from pykamino.db import OrderHistory as Oh
 
 
-class OrdersSeries(pandas.Series):
-    @property
-    def _constructor(self):
-        return OrdersSeries
-
-    @property
-    def _constructor_expanddim(self):
-        return OrdersDataFrame
-
-
-class OrdersDataFrame(pandas.DataFrame):
-    @property
-    def _constructor(self):
-        return OrdersDataFrame
-
-    @property
-    def _constructor_sliced(self):
-        return OrdersSeries
-
-    def at_timestamp(self, timestamp):
-        """Extract a subset of orders that are open in specified timestamp."""
-        filter = (self.time <= timestamp) & (
-            (self.close_time > timestamp) | self.close_time.isnull()
-        )
-        return self[filter]
-
-
-class OrderBook:
-    """
-    Represents an order book.
-    An order book is an electronic list of buy and sell orders for a specific
-    security or financial instrument.
-    """
-
-    def __init__(self, orders, timestamp):
-        self.orders = orders
-        self.timestamp = timestamp
+@register_dataframe_accessor('order_features')
+class OrderBookFeatures:
+    def __init__(self, pandas_obj):
+        self._obj = pandas_obj
 
     @cache(maxsize=1)
     def asks(self):
         """Ask orders ordered by price."""
-        asks_only_mask = self.orders.side == "ask"
-        return self.orders[asks_only_mask]
+        return self._obj[self._obj.side == 'ask']
 
     @cache(maxsize=1)
     def bids(self):
         """Bid orders ordered by price."""
-        bids_only_mask = self.orders.side == "bid"
-        return self.orders[bids_only_mask]
+        return self._obj[self._obj.side == "bid"]
 
     @cache(maxsize=1)
     def best_ask_order(self):
@@ -93,12 +56,12 @@ class OrderBook:
     @cache(maxsize=1)
     def best_ask_price(self):
         """Minimum price among ask orders."""
-        return self.asks().price.astype(float).min()
+        return self.asks().price.min()
 
     @cache(maxsize=1)
     def best_bid_price(self):
         """Maximum price among bid orders."""
-        return self.bids().price.astype(float).max()
+        return self.bids().price.max()
 
     @cache(maxsize=1)
     def best_ask_amount(self):
@@ -205,7 +168,7 @@ class OrderBook:
     def bid_volume_weighted(self, price_weight=1):
         return self._volume_weighted_by_price(self.bids(), price_weight)
 
-    def features(self):
+    def compute_all(self):
         """Dictionary of all the features in this order book"""
         return {
             "mid_market_price": self.mid_market_price(),
@@ -222,7 +185,6 @@ class OrderBook:
             "bid_volume_weighted": self.bid_volume_weighted(),
             **self._ask_depth_chart_bins(),
             **self._bid_depth_chart_bins(),
-            "timestamp": self.timestamp,
         }
 
     def _ask_depth_chart_bins(self):
@@ -246,44 +208,40 @@ class OrderBook:
         )
 
 
-def _order_books_features(orders, timestamp):
-    orders_at_ts = orders.at_timestamp(timestamp)
-    if orders_at_ts.empty:
+def cache_orders(start_dt, end_dt, products):
+    return pandas.DataFrame(list(O.select(O.id, O.side, O.price, O.close_time, Oh.time, Oh.amount)
+                                 .join(Oh)
+                                 .where((Oh.time <= end_dt) &
+                                        ((O.close_time > start_dt) | (O.close_time == None)) &
+                                        O.product.in_(products))
+                                 .order_by(Oh.time).dicts()))
+
+
+def order_book_from_cache(order_cache, instant):
+    filt = ((order_cache.time <= instant) &
+            ((order_cache.close_time > instant) | order_cache.close_time.isnull()))
+    # Careful! This expects the DF to be sorted by orders' insertion time
+    return order_cache[filt].drop_duplicates(subset='id', keep='last')
+
+
+def extract_all(order_cache, instant):
+    order_book = order_book_from_cache(order_cache, instant)
+    if len(order_book) == 0:
         return None
-    order_book = OrderBook(orders_at_ts, timestamp)
-    return order_book.features()
-
-
-def _cache_query(start_dt, end_dt, products):
-    Oh = OrderHistory
-    O = Order
-    max_per_id = (Oh.
-                  select(Oh.order_id, fn.MAX(Oh.time).alias('time'))
-                  .group_by(Oh.order_id))
-    oh_with_max = (Oh
-                   .select(Oh.amount, Oh.time, Oh.order_id)
-                   .join(max_per_id, on=((Oh.order_id == max_per_id.c.order_id) &
-                                         (Oh.time == max_per_id.c.time)))
-                   .where(Oh.time <= end_dt))
-    query = (Order.select(O.side, O.price, O.close_time, oh_with_max.c.time, oh_with_max.c.amount)
-             .join(oh_with_max, on=(O.id == oh_with_max.c.order_id))
-             .where(((O.close_time == None) | (O.close_time > start_dt)) &
-                    O.product.in_(products)))
-    return query
-
-
-def orders_in_time_window(start_ts, end_ts, products):
-    return OrdersDataFrame(list(_cache_query(start_ts, end_ts, products).dicts()))
+    return order_book.order_features.compute_all()
 
 
 def extract(start_dt, end_dt, resolution='1min', products=['BTC-USD']):
     # orders_in_time_window is used to cache what we're about to analyze
     # in RAM within a single pass. We don't want to continuously query the DB.
-    orders = orders_in_time_window(start_dt, end_dt, products)
+    order_cache = cache_orders(start_dt, end_dt, products)
+
     instants = pandas.date_range(
         start=start_dt, end=end_dt, freq=resolution).tolist()
-    usable_cores = len(os.sched_getaffinity(0))
-    with Pool(usable_cores) as pool:
-        features = pool.starmap(_order_books_features, zip(repeat(orders), instants))
+    features = extract_all(order_cache, instants[0])
+    #usable_cores = len(os.sched_getaffinity(0))
+    # with Pool(usable_cores) as pool:
+    #    features = pool.starmap(_compute_in_parallel,
+    #                            zip(repeat(cache), instants))
     features = [f for f in features if f is not None]
     return features
