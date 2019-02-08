@@ -66,6 +66,9 @@ class Trade(BaseModel):
     price = CurrencyField()
     time = Iso8601DateTimeField()
 
+    class Meta:
+        indexes = ((('product', 'time'), False),)
+
 
 class Order(BaseModel):
     id = UUIDField(primary_key=True)
