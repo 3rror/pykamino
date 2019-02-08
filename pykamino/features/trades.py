@@ -19,12 +19,16 @@ def sells(df):
 
 @rounded
 def price_mean(df):
+    if len(df) == 0:
+        return None
     return df.price.mean()
 
 
 @rounded
 def price_std(df):
     """Standard deviation of prices."""
+    if len(df) == 0:
+        return None
     return df.price.astype(float).std()
 
 
