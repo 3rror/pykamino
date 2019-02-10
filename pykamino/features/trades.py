@@ -86,7 +86,7 @@ def select_trades(start_dt, end_dt, products):
     return pandas.DataFrame(list(query.dicts()))
 
 
-def features_from_subset(df, instant, next_instant):
+def features_in_subset(df, instant, next_instant):
     trades_slice = df[df.time.between(instant, next_instant)]
     features = compute_all(trades_slice)
     features['time'] = instant
@@ -105,5 +105,5 @@ def extract(start_dt, end_dt, resolution='1min', products=['BTC-USD']):
                                 freq=resolution).tolist()
     with multiprocessing.Pool() as pool:
         params = [(trades, start, end) for start, end in pairwise(windows)]
-        features = pool.starmap(features_from_subset, params)
+        features = pool.starmap(features_in_subset, params)
     return features
