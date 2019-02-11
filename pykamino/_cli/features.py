@@ -44,6 +44,7 @@ def _convert_to_timedelta(time_val):
     m           Minutes '5m'  -> 5 Minutes
     h           Hours   '24h' -> 24 Hours
     d           Days    '7d'  -> 7 Days
+    w           Weeks   '1w'  -> 1 Week
     =========   ======= ===================
 
     Examples::
@@ -66,4 +67,5 @@ def _convert_to_timedelta(time_val):
         return timedelta(hours=num)
     elif time_val.endswith('d'):
         return timedelta(days=num)
-
+    elif time_val.endswith('w'):
+        return timedelta(weeks=num)
