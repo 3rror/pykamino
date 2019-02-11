@@ -112,10 +112,11 @@ def features_from_subset(trades, start, end):
     return features
 
 
-def extract(start, end, res=td(minutes=10), products=["BTC-USD"], stride=10):
+def extract(start, end, res='10min', products=["BTC-USD"], stride=10):
     """
     TODO: Add doc
     """
+    res = pandas.to_timedelta(res)
 
     # Pre-download all orders in the time window. In-memory filtering is
     # faster than sending multiple queries to the database.
