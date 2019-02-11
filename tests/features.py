@@ -34,8 +34,8 @@ class BaseTestCase(unittest.TestCase):
 class OrderFeatures(BaseTestCase):
 
     START_DT = datetime(2010, 1, 30, 11, 00)
-    CLOSE_OFFSET_HOURS = 5
-    UPDATE_DT = START_DT + delta(hours=CLOSE_OFFSET_HOURS - 2)
+    UPDATE_DT = START_DT + delta(hours=3)
+    CLOSE_DT = START_DT + delta(hours=5)
     N_ORDERS = 20
 
     @staticmethod
@@ -47,6 +47,14 @@ class OrderFeatures(BaseTestCase):
     def models(self):
         return [Order, OrderHistory]
 
+    def prepare_dataframes(self):
+        start = self.CLOSE_DT + delta(minutes=10)
+        end = self.CLOSE_DT + delta(minutes=20)
+        self.orders = orders.select_orders(start, end, ['BTC-USD'])
+        self.order_book = orders.order_book_from_cache(
+            self.orders,
+            self.UPDATE_DT + delta(minutes=10))
+
     def populate_tables(self):
         orders = []
         hist = []
@@ -56,7 +64,7 @@ class OrderFeatures(BaseTestCase):
                  'bid' if i % 2 == 0 else 'ask',
                  'BTC-USD',
                  1500 + 500 * i,
-                 self.START_DT + delta(hours=self.CLOSE_OFFSET_HOURS, minutes=i) if i % 3 == 0 else None))
+                 self.CLOSE_DT + delta(minutes=i) if i % 3 == 0 else None))
             hist.append(
                 (i+1,
                  Decimal('0.1') * (i+1),
@@ -77,14 +85,7 @@ class OrderFeatures(BaseTestCase):
 
     def setUp(self):
         super().setUp()
-        start = self.START_DT + \
-            delta(hours=self.CLOSE_OFFSET_HOURS, minutes=10)
-        end = self.START_DT + \
-            delta(hours=self.CLOSE_OFFSET_HOURS, minutes=20)
-        self.orders = orders.select_orders(start, end, ['BTC-USD'])
-        self.order_book = orders.order_book_from_cache(
-            self.orders,
-            self.UPDATE_DT + delta(minutes=10))
+        self.prepare_dataframes()
 
     def test_database_query(self):
         self.assertEqual(len(self.orders), 17)
@@ -93,8 +94,90 @@ class OrderFeatures(BaseTestCase):
         with self.subTest():
             self.assertEqual(len(self.order_book), 16)
             df = self.order_book
-            row = df[df.id.astype(str)==self.uuid_builder(11)]
-            self.assertEqual(row.amount.all(), 100)
+            row = df[df.id.astype(str) == self.uuid_builder(11)]
+            self.assertEqual(row.amount.iloc[0], 100)
+
+    def test_best_ask_price(self):
+        self.assertEqual(
+            orders.best_ask_price(self.order_book), 2000)
+
+    def test_best_bid_price(self):
+        self.assertEqual(
+            orders.best_bid_price(self.order_book), 10500)
+
+    def test_best_ask_amount(self):
+        Order.insert(
+            {'id': self.uuid_builder(900),
+             'side': 'ask',
+             'product': 'BTC-USD',
+             'price': 2000,
+             'close_time': None}).execute()
+        OrderHistory.insert(
+            {'id': 900,
+             'amount': 1,
+             'time': self.START_DT,
+             'order_id': self.uuid_builder(900)}).execute()
+        self.prepare_dataframes()
+        self.assertEqual(
+            orders.best_ask_amount(self.order_book), Decimal('1.2'))
+
+    def test_best_bid_amount(self):
+        Order.insert(
+            {'id': self.uuid_builder(900),
+             'side': 'bid',
+             'product': 'BTC-USD',
+             'price': 10500,
+             'close_time': None}).execute()
+        OrderHistory.insert(
+            {'id': 900,
+             'amount': 1,
+             'time': self.START_DT,
+             'order_id': self.uuid_builder(900)}).execute()
+        self.prepare_dataframes()
+        self.assertEqual(
+            orders.best_bid_amount(self.order_book), Decimal('2.9'))
+
+    def test_mid_market_price(self):
+        self.assertEqual(orders.mid_market_price(self.order_book), 6250)
+
+    def test_spread(self):
+        self.assertEqual(orders.spread(self.order_book), 8500)
+
+    def test_ask_depth(self):
+        self.assertEqual(orders.ask_depth(self.order_book), 8)
+
+    def test_bid_depth(self):
+        self.assertEqual(orders.bid_depth(self.order_book), 8)
+
+    def test_ask_depth_chart(self):
+        chart = orders.ask_depth_chart(self.order_book)
+        with self.subTest():
+            self.assertEqual(chart.amount.iloc[0], Decimal('0.2'))
+            self.assertEqual(chart.amount.iloc[-1], Decimal('108.4'))
+
+    def test_bid_depth_chart(self):
+        chart = orders.bid_depth_chart(self.order_book)
+        first_row = chart.iloc[0]
+        last_row = chart.iloc[-1]
+        with self.subTest():
+            self.assertEqual(first_row.amount, Decimal('9.2'))
+            self.assertEqual(first_row.price, Decimal(2500))
+            self.assertEqual(last_row.amount, Decimal('1.9'))
+            self.assertEqual(last_row.price, Decimal(10500))
+
+    def test_ask_volume_weighted(self):
+        self.assertAlmostEqual(orders.ask_volume_weighted(
+            self.order_book), Decimal('0.13466247'), delta=1e-8)
+
+    def test_bid_volume_weighted(self):
+        self.assertAlmostEqual(orders.bid_volume_weighted(
+            self.order_book), Decimal('-0.00561498'), delta=1e-8)
+
+    def test_ask_volume(self):
+        self.assertEqual(orders.ask_volume(self.order_book), Decimal('108.4'))
+
+    def test_bid_volume(self):
+        self.assertEqual(orders.bid_volume(self.order_book), Decimal('9.2'))
 
 
 class TradeFeatures(BaseTestCase):
@@ -147,7 +230,7 @@ class TradeFeatures(BaseTestCase):
         # Pandas can be very unintuitive. Let's test if we can get
         # features from a subset of the dataframe as well...
         subset = trades.features_from_subset(self.dataframe,
-                                           self.START_DT, self.START_DT + delta(minutes=46))
+                                             self.START_DT, self.START_DT + delta(minutes=46))
         self.assertEqual(subset['price_mean'], 2500)
 
     # TODO: test CSV generation, not only calculations
