@@ -1,109 +1,126 @@
 import multiprocessing
-from datetime import datetime
-from itertools import tee
-
 import pandas
+from datetime import timedelta as td
 from pykamino.db import Trade
 from pykamino.features.decorators import rounded
 
 
-def buys(df):
+def buys(trades):
     """Trades of type 'buy'."""
-    return df[df.side == "buy"]
+    return trades[trades.side == "buy"]
 
 
-def sells(df):
+def sells(trades):
     """Trades of type 'sell'."""
-    return df[df.side == "sell"]
+    return trades[trades.side == "sell"]
 
 
 @rounded
-def price_mean(df):
-    if len(df) == 0:
+def price_mean(trades):
+    if trades.empty:
         return None
-    return df.price.mean()
+    return trades.price.mean()
 
 
 @rounded
-def price_std(df):
+def price_std(trades):
     """Standard deviation of prices."""
-    if len(df) == 0:
+    if trades.empty:
         return None
-    return df.price.astype(float).std()
+    return trades.price.astype(float).std()
 
 
-def buy_count(df):
+def buy_count(trades):
     """Number of 'buy' trades."""
-    return len(buys(df))
+    return len(buys(trades))
 
 
-def sell_count(df):
+def sell_count(trades):
     """Number of 'sell' trades."""
-    return len(sells(df))
+    return len(sells(trades))
 
 
 @rounded
-def total_buy_volume(df):
+def total_buy_volume(trades):
     """Total amount bought."""
-    return buys(df).amount.sum()
+    return buys(trades).amount.sum()
 
 
 @rounded
-def total_sell_volume(df):
+def total_sell_volume(trades):
     """Total amount sold."""
-    return sells(df).amount.sum()
+    return sells(trades).amount.sum()
 
 
 @rounded
-def price_movement(df):
+def price_movement(trades):
     """Difference between the oldest and the most recent price."""
-    if len(df) == 0:
+    if trades.empty:
         return None
-    if len(df) == 1:
+    # Avoid results like 0E0
+    if len(trades) == 1:
         return 0
-    first_trade = df.loc[df.time.idxmin()]
-    last_trade = df.loc[df.time.idxmax()]
+    first_trade = trades.loc[trades.time.idxmin()]
+    last_trade = trades.loc[trades.time.idxmax()]
     return first_trade.price - last_trade.price
 
 
-# TODO: make the collection automatic
-def compute_all(df):
+def compute_all(trades):
     return {
-        "buy_count": buy_count(df),
-        "sell_count": sell_count(df),
-        "total_buy_volume": total_buy_volume(df),
-        "total_sell_volume": total_sell_volume(df),
-        "price_mean": price_mean(df),
-        "price_std": price_std(df),
-        "price_movement": price_movement(df),
+        "buy_count": buy_count(trades),
+        "sell_count": sell_count(trades),
+        "total_buy_volume": total_buy_volume(trades),
+        "total_sell_volume": total_sell_volume(trades),
+        "price_mean": price_mean(trades),
+        "price_std": price_std(trades),
+        "price_movement": price_movement(trades),
     }
 
 
-def select_trades(start_dt, end_dt, products):
-    query = (Trade.select()
-             .where(Trade.time.between(start_dt, end_dt) &
-                    Trade.product.in_(products)))
-    return pandas.DataFrame(list(query.dicts()))
+def select_trades(start, end, products):
+    """
+    Return from the database all the order in the specified time window.
+    """
+    trades = Trade.select().where(
+        Trade.time.between(start, end) & Trade.product.in_(products)
+    )
+    return pandas.DataFrame(list(trades.dicts()))
 
 
-def features_in_subset(df, instant, next_instant):
-    trades_slice = df[df.time.between(instant, next_instant)]
+def time_windows(start, end, freq=td(minutes=10), stride=10):
+    """
+    Create a generator of time windows.
+    """
+    if stride < 0 or stride > 100:
+        raise ValueError("Stride value must be between 0 and 100.")
+
+    offset = freq / stride
+    while start + freq <= end:
+        yield start, start + freq
+        start += offset
+
+
+def features_from_subset(trades, start, end):
+    """
+    TODO: Add doc
+    """
+    trades_slice = trades[trades.time.between(start, end)]
     features = compute_all(trades_slice)
-    features['time'] = instant
+    features["start_time"] = start
+    features["end_time"] = end
+
     return features
 
 
-def extract(start_dt, end_dt, resolution='1min', products=['BTC-USD']):
-    def pairwise(iterable):
-        # https://docs.python.org/3.6/library/itertools.html#recipes
-        a, b = tee(iterable)
-        next(b, None)
-        return zip(a, b)
+def extract(start, end, res=td(minutes=10), products=["BTC-USD"], stride=10):
+    """
+    TODO: Add doc
+    """
 
-    trades = select_trades(start_dt, end_dt, products)
-    windows = pandas.date_range(start=start_dt, end=end_dt,
-                                freq=resolution).tolist()
+    # Pre-download all orders in the time window. In-memory filtering is
+    # faster than sending multiple queries to the database.
+    trades = select_trades(start, end, products)
+
     with multiprocessing.Pool() as pool:
-        params = [(trades, start, end) for start, end in pairwise(windows)]
-        features = pool.starmap(features_in_subset, params)
-    return features
+        data = ((trades, *window) for window in time_windows(start, end, res, stride))
+        return pool.starmap(features_from_subset, data)

@@ -58,7 +58,7 @@ class Snapshot:
         self.TempSnapshot.insert_many(self, fields=['id']).execute()
         in_book = self.TempSnapshot.select().where(self.TempSnapshot.id == Order.id)
         Order.update(close_time=datetime.now()).where(
-            ~fn.EXISTS(in_book), Order.close_time == None).execute()
+            ~fn.EXISTS(in_book), Order.close_time is None).execute()
         # Empty the temporary table
         self.TempSnapshot.raw('TRUNCATE TABLE {}'.format(
             self.TempSnapshot._meta.table_name))
