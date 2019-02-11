@@ -146,7 +146,7 @@ class TradeFeatures(BaseTestCase):
     def test_features_from_subset(self):
         # Pandas can be very unintuitive. Let's test if we can get
         # features from a subset of the dataframe as well...
-        subset = trades.features_in_subset(self.dataframe,
+        subset = trades.features_from_subset(self.dataframe,
                                            self.START_DT, self.START_DT + delta(minutes=46))
         self.assertEqual(subset['price_mean'], 2500)
 
