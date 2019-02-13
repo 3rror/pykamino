@@ -91,10 +91,10 @@ def time_windows(start, end, freq=td(minutes=10), stride=10):
     """
     Create a generator of time windows.
     """
-    if stride < 0 or stride > 100:
-        raise ValueError("Stride value must be between 0 and 100.")
-
-    offset = freq / stride
+    if not 0 < stride <= 100:
+        raise ValueError(
+            "Stride value must be greater than 0 and less or equal to 100.")
+    offset = freq * stride / 100
     while start + freq <= end:
         yield start, start + freq
         start += offset
