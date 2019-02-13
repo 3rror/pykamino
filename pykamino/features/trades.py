@@ -111,7 +111,7 @@ def features_from_subset(trades, start, end):
     return features
 
 
-def extract(start, end, res='10min', products=["BTC-USD"], stride=10):
+def extract(start, end, res='10min', stride=10, products=["BTC-USD"]):
     """
     TODO: Add doc
     """

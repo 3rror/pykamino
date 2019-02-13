@@ -69,6 +69,13 @@ feat_parser.add_argument(
     help='where to store output files',
     default='.'
 )
+feat_parser.add_argument(
+    '-s',
+    '--stride',
+    type=float,
+    help='offset (in %%) of the next sample. Only meaningful for trades',
+    default=100
+)
 
 
 args = parser.parse_args()

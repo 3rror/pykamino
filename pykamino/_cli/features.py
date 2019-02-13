@@ -6,10 +6,11 @@ from datetime import timedelta
 
 def compute(*args, **kwargs):
     category = kwargs['category']
-    params = {'start_dt': kwargs['start'],
-              'end_dt': kwargs['end'],
+    params = {'start': kwargs['start'],
+              'end': kwargs['end'],
               'res': kwargs['resolution'],
               'products': cfg['global']['products'],
+              'stride': kwargs['stride'],
               'path': kwargs['path']}
     init_db()
     if category == 'all':
@@ -21,11 +22,11 @@ def compute(*args, **kwargs):
         export_trades(**params)
 
 
-def export_trades(start_dt, end_dt, res, products, path):
-    feats = trades.extract(start_dt, end_dt, res, products)
+def export_trades(start, end, res, stride, products, path):
+    feats = trades.extract(start, end, res, stride, products)
     exporter.features_to_csv(feats, path + '/trades.csv')
 
 
-def export_orders(start_dt, end_dt, res, products, path):
-    feats = orders.extract(start_dt, end_dt, res, products)
+def export_orders(start, end, res, products, path, **kwargs):
+    feats = orders.extract(start, end, res, products)
     exporter.features_to_csv(feats, path + '/orders.csv')
