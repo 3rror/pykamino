@@ -1,6 +1,5 @@
 import multiprocessing
 import pandas
-from datetime import timedelta as td
 from pykamino.db import Trade
 from pykamino.features.decorators import rounded
 
@@ -87,7 +86,7 @@ def select_trades(start, end, products):
     return pandas.DataFrame(list(trades.dicts()))
 
 
-def time_windows(start, end, freq=td(minutes=10), stride=10):
+def time_windows(start, end, freq, stride=10):
     """
     Create a generator of time windows.
     """
