@@ -144,10 +144,10 @@ def price_movement(trades):
     if trades.empty:
         raise ValueError(
             "Cannot calculate price movement on an empty dataframe.")
-    return oldest_trade(trades).price - most_recent_trade(trades).price
+    return oldest_trade(trades).price - latest_trade(trades).price
 
 
-def most_recent_trade(trades):
+def latest_trade(trades):
     """Return the most recent trade in the dataframe.
 
     Args:
