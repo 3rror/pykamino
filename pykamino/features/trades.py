@@ -128,15 +128,49 @@ def total_sell_volume(trades):
 
 @rounded
 def price_movement(trades):
-    """Difference between the oldest and the most recent price."""
+    """Return the difference between the oldest and the most recent trade price
+    in the dataframe.
+
+    Args:
+        trades (pandas.DataFrame): dataframe of trades
+
+    Raises:
+        ValueError: raised when trades dataframe is empty
+
+    Returns:
+        decimal.Decimal: price movement
+
+    """
     if trades.empty:
-        return None
-    # Avoid results like 0E0
-    if len(trades) == 1:
-        return 0
-    first_trade = trades.loc[trades.time.idxmin()]
-    last_trade = trades.loc[trades.time.idxmax()]
-    return first_trade.price - last_trade.price
+        raise ValueError(
+            "Cannot calculate price movement on an empty dataframe.")
+    return oldest_trade(trades).price - most_recent_trade(trades).price
+
+
+def most_recent_trade(trades):
+    """Return the most recent trade in the dataframe.
+
+    Args:
+        trades (pandas.DataFrame): dataframe of trades
+
+    Returns:
+        [pandas.Series]: most recent trade
+
+    """
+    return trades.loc[trades.time.idxmax()]
+
+
+def oldest_trade(trades):
+    """Return the oldest trade in the dataframe.
+
+    Args:
+        trades (pandas.DataFrame): dataframe of trades
+
+    Returns:
+        [pandas.Series]: oldest trade
+
+    """
+    return trades.loc[trades.time.idxmin()]
 
 
 def compute_all(trades):
