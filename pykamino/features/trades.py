@@ -47,7 +47,8 @@ def mean_price(trades):
 
     """
     if trades.empty:
-        raise ValueError("Cannot calculate the mean price on an empty dataframe.")
+        raise ValueError(
+            "Cannot calculate the mean price on an empty dataframe.")
     return trades.price.mean()
 
 
