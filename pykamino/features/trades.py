@@ -54,7 +54,18 @@ def mean_price(trades):
 
 @rounded
 def price_std(trades):
-    """Standard deviation of prices."""
+    """Return the standard deviation of the prices of the trades.
+
+    Args:
+        trades (pandas.DataFrame): dataframe of trades
+
+    Raises:
+        ValueError: raised when trades dataframe is empty
+
+    Returns:
+        numpy.float64: standard deviation, rounded to 8 digits
+
+    """
     if trades.empty:
         raise ValueError(
             "Cannot calculate price standard deviation on an empty dataframe.")
