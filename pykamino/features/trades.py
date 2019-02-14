@@ -1,5 +1,7 @@
 import multiprocessing
+
 import pandas
+
 from pykamino.db import Trade
 from pykamino.features.decorators import rounded
 
