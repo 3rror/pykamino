@@ -20,7 +20,15 @@ def buys(trades):
 
 
 def sells(trades):
-    """Trades of type 'sell'."""
+    """Return trades of type 'sell' in the specified dataframe.
+
+    Args:
+        trades (pandas.DataFrame): dataframe of trades
+
+    Returns:
+        pandas.DataFrame: trades of type 'sell'
+
+    """
     return trades[trades.side == "sell"]
 
 
