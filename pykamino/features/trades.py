@@ -138,7 +138,7 @@ def price_movement(trades):
         ValueError: raised when trades dataframe is empty
 
     Returns:
-        decimal.Decimal: price movement
+        decimal.Decimal: price movement, rounded to 8 digits
 
     """
     if trades.empty:
