@@ -7,7 +7,15 @@ from pykamino.features.decorators import rounded
 
 
 def buys(trades):
-    """Trades of type 'buy'."""
+    """Return trades of type 'buy' in the specified dataframe.
+
+    Args:
+        trades (pandas.DataFrame): dataframe of trades
+
+    Returns:
+        pandas.DataFrame: trades of type 'buy'
+
+    """
     return trades[trades.side == "buy"]
 
 
