@@ -86,7 +86,15 @@ def buy_count(trades):
 
 
 def sell_count(trades):
-    """Number of 'sell' trades."""
+    """Return the number of 'sell' trades in the dataframe.
+
+    Args:
+        trades (pandas.DataFrame): dataframe of trades
+
+    Returns:
+        int: number of 'sell' trades
+
+    """
     return len(sells(trades))
 
 
