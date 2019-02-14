@@ -128,8 +128,8 @@ def total_sell_volume(trades):
 
 @rounded
 def price_movement(trades):
-    """Return the difference between the oldest and the most recent trade price
-    in the dataframe.
+    """Return the difference between the oldest and the most recent trade
+    price in the dataframe.
 
     Args:
         trades (pandas.DataFrame): dataframe of trades
