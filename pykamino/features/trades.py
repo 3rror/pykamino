@@ -185,14 +185,22 @@ def compute_all(trades):
     }
 
 
-def select_trades(start, end, products):
-    """
-    Return from the database all the order in the specified time window.
+def fetch_trades(start, end, product="BTC-USD"):
+    """Return a dataframe of all the orders in the specified time window.
+
+    Args:
+        start (datetime.datetime): start of the time window
+        end (datetime.datetime): end of the time window
+        product (str, optional): Defaults to "BTC-USD". Currency to consider
+
+    Returns:
+        pandas.DataFrame: orders in the specified time window
+
     """
     trades = Trade.select().where(
-        Trade.time.between(start, end) & Trade.product.in_(products)
-    )
-    return pandas.DataFrame(list(trades.dicts()))
+        (Trade.product == product) & Trade.time.between(start, end)
+    ).namedtuples()
+    return pandas.DataFrame(trades)
 
 
 def time_windows(start, end, freq, stride=10):
