@@ -35,7 +35,7 @@ def sells(trades):
 @rounded
 def price_mean(trades):
     if trades.empty:
-        return None
+        raise ValueError("Cannot calculate price mean on an empty dataframe.")
     return trades.price.mean()
 
 
