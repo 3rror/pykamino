@@ -114,7 +114,15 @@ def total_buy_volume(trades):
 
 @rounded
 def total_sell_volume(trades):
-    """Total amount sold."""
+    """Return the total amount sold in the dataframe.
+
+    Args:
+        trades (pandas.DataFrame): dataframe of trades
+
+    Returns:
+        numpy.float64: total amount sold
+
+    """
     return sells(trades).amount.sum()
 
 
