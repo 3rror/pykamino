@@ -34,6 +34,18 @@ def sells(trades):
 
 @rounded
 def mean_price(trades):
+    """Return the mean price of all the trades in the dataframe.
+
+    Args:
+        trades (pandas.DataFrame): dataframe of trades
+
+    Raises:
+        ValueError: raised when trades dataframe is empty
+
+    Returns:
+        numpy.float64: mean price, rounded to 8 digits
+
+    """
     if trades.empty:
         raise ValueError("Cannot calculate the mean price on an empty dataframe.")
     return trades.price.mean()
