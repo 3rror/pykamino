@@ -56,7 +56,8 @@ def mean_price(trades):
 def price_std(trades):
     """Standard deviation of prices."""
     if trades.empty:
-        return None
+        raise ValueError(
+            "Cannot calculate price standard deviation on an empty dataframe.")
     return trades.price.astype(float).std()
 
 
