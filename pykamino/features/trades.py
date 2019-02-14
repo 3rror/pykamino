@@ -73,7 +73,7 @@ def price_std(trades):
 
 
 def buy_count(trades):
-    """Return the number of 'buy' trades.
+    """Return the number of 'buy' trades in the dataframe.
 
     Args:
         trades (pandas.DataFrame): dataframe of trades
