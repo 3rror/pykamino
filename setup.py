@@ -12,6 +12,7 @@ setup(
     # This is a namespace project as it lacks of __init__.py files
     packages=find_namespace_packages(),
     zip_safe=True,
+    test_suite='tests',
     scripts=['bin/pykamino'],
     data_files=[(user_config_dir('pykamino'), [
                  'pykamino/data/pykamino.toml'])],
