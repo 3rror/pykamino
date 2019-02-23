@@ -1,10 +1,13 @@
 import datetime
 from enum import Enum
 from functools import partial
+from math import ceil
+from os import cpu_count
 
 from peewee import (SQL, BigIntegerField, CharField, DateTimeField,
-                    DecimalField, ForeignKeyField, Model, MySQLDatabase,
-                    PostgresqlDatabase, Proxy, SqliteDatabase, UUIDField)
+                    DecimalField, ForeignKeyField, Model, Proxy, UUIDField)
+from playhouse.pool import (PooledMySQLDatabase, PooledPostgresqlDatabase,
+                            PooledSqliteDatabase)
 
 # We want the database to be dinamically defined, so that we
 # can support different DBMSs. In order to do that, we first declare a placeholder.
@@ -28,15 +31,20 @@ def db_factory(dbms: Dbms, db_name, user=None, psw=None, host=None, port=None):
             'user': user,
             'password': psw,
             'host': host,
-            'port': port}
+            'port': port,
+            # We don't want too many connections, but we want
+            # at least two (for fast feature extraction)
+            'max_connections': ceil(cpu_count() / 2) if cpu_count() > 2 else 2
+            }
     if dbms == Dbms.MYSQL:
-        db = MySQLDatabase(**args)
+        db = PooledMySQLDatabase(**args)
     elif dbms == Dbms.POSTGRES:
-        db = PostgresqlDatabase(**args)
+        db = PooledPostgresqlDatabase(**args)
     elif dbms == Dbms.SQLITE:
-        db = SqliteDatabase(db_name)
+        db = PooledSqliteDatabase(db_name)
     database.initialize(db)
     database.create_tables(BaseModel.__subclasses__())
+    database.manual_close()
     return database
 
 
