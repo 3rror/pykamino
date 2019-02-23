@@ -23,7 +23,7 @@ def compute(*args, **kwargs):
 
 
 def export_trades(start, end, res, stride, products, path):
-    feats = trades.extract(start, end, res, stride, products)
+    feats = trades.batch_extract(start, end, res, stride, products)
     exporter.features_to_csv(feats, path + '/trades.csv')
 
 

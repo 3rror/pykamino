@@ -1,9 +1,14 @@
+import itertools
 import multiprocessing
+from collections import namedtuple
+from itertools import islice
 
 import pandas
 
-from pykamino.db import Trade
+from pykamino.db import Trade, database
 from pykamino.features.decorators import rounded
+
+TimeWindow = namedtuple('TimeWindow', 'start, end')
 
 
 def buys(trades):
@@ -173,18 +178,6 @@ def oldest_trade(trades):
     return trades.loc[trades.time.idxmin()]
 
 
-def compute_all(trades):
-    return {
-        "buy_count": buy_count(trades),
-        "sell_count": sell_count(trades),
-        "total_buy_volume": total_buy_volume(trades),
-        "total_sell_volume": total_sell_volume(trades),
-        "price_mean": price_mean(trades),
-        "price_std": price_std(trades),
-        "price_movement": price_movement(trades),
-    }
-
-
 def fetch_trades(start, end, product="BTC-USD"):
     """Return a dataframe of all the orders in the specified time window.
 
@@ -203,41 +196,96 @@ def fetch_trades(start, end, product="BTC-USD"):
     return pandas.DataFrame(trades)
 
 
-def time_windows(start, end, freq, stride=10):
+def sliding_time_windows(start, end, freq, stride=100, chunksize=8):
+    """Return a generator of sliding time windows.
+
+    Args:
+        start (datetime.datetime): start time
+        end (datetime.datetime): end time
+        freq (datetime.timedelta): resolution of each windows
+        stride (int, optional):
+            Defaults to 100. Offset of each time windows from the previous
+            one, expressed as percentage of the resolution.
+
+    Raises:
+        ValueError:
+            if stride is not a value greater than 0 and less or equal to 100
+        ValueError:
+            if frequency is greater than the period between start and end
+
+    Returns:
+        Generator[Tuple(datetime.datetime, datetime.datetime)]:
+            a generator producing tuples like (window_start, window_end)
+
     """
-    Create a generator of time windows.
-    """
+    # A stride of 0 doesn't make sense because it would mean a 100% overlap
+    # creating an infinite loop
     if not 0 < stride <= 100:
         raise ValueError(
             "Stride value must be greater than 0 and less or equal to 100.")
+
+    if (end - start) < freq:
+        raise ValueError(
+            "Frequency must be less than the period between start and end")
+
     offset = freq * stride / 100
+
+    buffer = []
     while start + freq <= end:
-        yield start, start + freq
+        if len(buffer) <= chunksize:
+            buffer.append(TimeWindow(start, end=start + freq))
+        else:
+            yield buffer
+            buffer.clear()
         start += offset
 
+# def features_from_subset(trades, start, end):
 
-def features_from_subset(trades, start, end):
+
+def features_from_subset(trades, time_window):
     """
     TODO: Add doc
     """
-    trades_slice = trades[trades.time.between(start, end)]
-    features = compute_all(trades_slice)
-    features["start_time"] = start
-    features["end_time"] = end
+    try:
+        trades_slice = trades[trades.time.between(*time_window)]
+        return {
+            "buy_count": buy_count(trades_slice),
+            "sell_count": sell_count(trades_slice),
+            "total_buy_volume": total_buy_volume(trades_slice),
+            "total_sell_volume": total_sell_volume(trades_slice),
+            "price_mean": mean_price(trades_slice),
+            "price_std": price_std(trades_slice),
+            "price_movement": price_movement(trades_slice),
+            "start_time": time_window.start,
+            "end_time": time_window.end
+        }
+    except (ValueError, AttributeError):
+        return {
+            "buy_count": 0,
+            "sell_count": 0,
+            "total_buy_volume": 0,
+            "total_sell_volume": 0,
+            "price_mean": None,
+            "price_std": None,
+            "price_movement": None,
+            "start_time": time_window.start,
+            "end_time": time_window.end
+        }
 
-    return features
 
-
-def extract(start, end, res='10min', stride=10, products=["BTC-USD"]):
-    """
-    TODO: Add doc
-    """
+def batch_extract(start, end, res='10min', stride=10, products=("BTC-USD")):
+    features = {}
     res = pandas.to_timedelta(res)
-
-    # Pre-download all orders in the time window. In-memory filtering is
-    # faster than sending multiple queries to the database.
-    trades = select_trades(start, end, products)
-
     with multiprocessing.Pool() as pool:
-        data = ((trades, *window) for window in time_windows(start, end, res, stride))
-        return pool.starmap(features_from_subset, data)
+        for product in products:
+            output = pool.imap(extract, sliding_time_windows(
+                start, end, res, stride),  chunksize=200)
+            features[product] = list(itertools.chain(output))
+    return features['BTC-USD']
+
+
+def extract(windows):
+    start_first_window = windows[0].start
+    end_last_windows = windows[-1].end
+    trades = fetch_trades(start_first_window, end_last_windows)
+    return [features_from_subset(trades, w) for w in windows]
