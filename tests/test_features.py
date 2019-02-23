@@ -201,11 +201,11 @@ class TradeFeatures(BaseTestCase):
 
     def setUp(self):
         super().setUp()
-        self.dataframe = trades.select_trades(
-            self.START_DT, datetime.max, products=['BTC-USD'])
+        self.dataframe = trades.fetch_trades(
+            self.START_DT, datetime.max, product='BTC-USD')
 
     def test_mean_price(self):
-        self.assertEqual(trades.price_mean(self.dataframe), 6250)
+        self.assertEqual(trades.mean_price(self.dataframe), 6250)
 
     def test_std_price(self):
         self.assertAlmostEqual(trades.price_std(self.dataframe),
@@ -229,8 +229,8 @@ class TradeFeatures(BaseTestCase):
     def test_features_from_subset(self):
         # Pandas can be very unintuitive. Let's test if we can get
         # features from a subset of the dataframe as well...
-        subset = trades.features_from_subset(self.dataframe,
-                                             self.START_DT, self.START_DT + delta(minutes=46))
+        window = trades.TimeWindow(self.START_DT, self.START_DT + delta(minutes=46))
+        subset = trades.features_from_subset(self.dataframe, window)
         self.assertEqual(subset['price_mean'], 2500)
 
     # TODO: test CSV generation, not only calculations
