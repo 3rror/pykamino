@@ -126,8 +126,8 @@ def bid_depth_chart(orders):
 
 def ask_depth_chart_bins(orders, bins=10):
     ask_part = ask_depth_chart(orders)
-    ask_part = ask_part[ask_part.price < Decimal(
-        '1.99') * mid_market_price(orders)]
+    ask_part = ask_part.astype({'price': float, 'amount': float})
+    ask_part = ask_part[ask_part.price < 1.99 * float(mid_market_price(orders))]
     ask_bins = ask_part.groupby(
         pandas.cut(
             ask_part.price,
@@ -140,8 +140,8 @@ def ask_depth_chart_bins(orders, bins=10):
 
 def bid_depth_chart_bins(orders, bins=10):
     bid_part = bid_depth_chart(orders)
-    bid_part = bid_part[bid_part.price > Decimal(
-        '0.01') * orders.mid_market_price()]
+    bid_part = bid_part.astype({'price': float, 'amount': float})
+    bid_part = bid_part[bid_part.price > 0.01 * float(mid_market_price(orders))]
     bid_bins = bid_part.groupby(
         pandas.cut(
             bid_part.price,
