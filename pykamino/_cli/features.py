@@ -1,6 +1,7 @@
 from pykamino._cli.config import config as cfg
 from pykamino._cli.shared_utils import init_db
 from pykamino.features import exporter, orders, trades
+from pykamino.features import TimeWindow
 from datetime import timedelta
 
 
@@ -23,7 +24,8 @@ def compute(*args, **kwargs):
 
 
 def export_trades(start, end, res, stride, products, path):
-    feats = trades.batch_extract(start, end, res, stride, products)
+    interval = TimeWindow(start, end)
+    feats = trades.batch_extract(interval, res, stride, products)
     exporter.features_to_csv(feats, path + '/trades.csv')
 
 
