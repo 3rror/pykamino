@@ -1,40 +1,62 @@
 import itertools
 import multiprocessing
-from collections import namedtuple
 from itertools import islice
 
 import pandas
 
 from pykamino.db import Trade, database
+from pykamino.features import TimeWindow
 from pykamino.features.decorators import rounded
 
-TimeWindow = namedtuple('TimeWindow', 'start, end')
 
+# Feature calcutation #
 
-def buys(trades):
-    """Return trades of type 'buy' in the specified dataframe.
-
-    Args:
-        trades (pandas.DataFrame): dataframe of trades
-
-    Returns:
-        pandas.DataFrame: trades of type 'buy'
-
-    """
-    return trades[trades.side == "buy"]
-
-
-def sells(trades):
-    """Return trades of type 'sell' in the specified dataframe.
+def _buys(trades):
+    """Return trades of type "buy" in the specified dataframe.
 
     Args:
         trades (pandas.DataFrame): dataframe of trades
 
     Returns:
-        pandas.DataFrame: trades of type 'sell'
-
+        pandas.DataFrame: trades of type "buy"
     """
-    return trades[trades.side == "sell"]
+    return trades[trades.side == 'buy']
+
+
+def _sells(trades):
+    """Return trades of type "sell" in the specified dataframe.
+
+    Args:
+        trades (pandas.DataFrame): dataframe of trades
+
+    Returns:
+        pandas.DataFrame: trades of type "sell"
+    """
+    return trades[trades.side == 'sell']
+
+
+def _latest_trade(trades):
+    """Return the most recent trade in the dataframe.
+
+    Args:
+        trades (pandas.DataFrame): dataframe of trades
+
+    Returns:
+        [pandas.Series]: most recent trade
+    """
+    return trades.loc[trades.time.idxmax()]
+
+
+def _oldest_trade(trades):
+    """Return the oldest trade in the dataframe.
+
+    Args:
+        trades (pandas.DataFrame): dataframe of trades
+
+    Returns:
+        [pandas.Series]: oldest trade
+    """
+    return trades.loc[trades.time.idxmin()]
 
 
 @rounded
@@ -49,11 +71,10 @@ def mean_price(trades):
 
     Returns:
         numpy.float64: mean price, rounded to 8 digits
-
     """
     if trades.empty:
         raise ValueError(
-            "Cannot calculate the mean price on an empty dataframe.")
+            'Cannot calculate the mean price on an empty dataframe.')
     return trades.price.mean()
 
 
@@ -69,38 +90,35 @@ def price_std(trades):
 
     Returns:
         numpy.float64: standard deviation, rounded to 8 digits
-
     """
     if trades.empty:
         raise ValueError(
-            "Cannot calculate price standard deviation on an empty dataframe.")
+            'Cannot calculate price standard deviation on an empty dataframe.')
     return trades.price.astype(float).std()
 
 
 def buy_count(trades):
-    """Return the number of 'buy' trades in the dataframe.
+    """Return the number of "buy" trades in the dataframe.
 
     Args:
         trades (pandas.DataFrame): dataframe of trades
 
     Returns:
-        int: number of 'buy' trades
-
+        int: number of "buy" trades
     """
-    return len(buys(trades))
+    return len(_buys(trades))
 
 
 def sell_count(trades):
-    """Return the number of 'sell' trades in the dataframe.
+    """Return the number of "sell" trades in the dataframe.
 
     Args:
         trades (pandas.DataFrame): dataframe of trades
 
     Returns:
-        int: number of 'sell' trades
-
+        int: number of "sell" trades
     """
-    return len(sells(trades))
+    return len(_sells(trades))
 
 
 @rounded
@@ -112,9 +130,8 @@ def total_buy_volume(trades):
 
     Returns:
         numpy.float64: total amount bought
-
     """
-    return buys(trades).amount.sum()
+    return _buys(trades).amount.sum()
 
 
 @rounded
@@ -126,9 +143,8 @@ def total_sell_volume(trades):
 
     Returns:
         numpy.float64: total amount sold
-
     """
-    return sells(trades).amount.sum()
+    return _sells(trades).amount.sum()
 
 
 @rounded
@@ -144,39 +160,14 @@ def price_movement(trades):
 
     Returns:
         decimal.Decimal: price movement, rounded to 8 digits
-
     """
     if trades.empty:
         raise ValueError(
-            "Cannot calculate price movement on an empty dataframe.")
-    return oldest_trade(trades).price - latest_trade(trades).price
+            'Cannot calculate price movement on an empty dataframe.')
+    return _oldest_trade(trades).price - _latest_trade(trades).price
 
 
-def latest_trade(trades):
-    """Return the most recent trade in the dataframe.
-
-    Args:
-        trades (pandas.DataFrame): dataframe of trades
-
-    Returns:
-        [pandas.Series]: most recent trade
-
-    """
-    return trades.loc[trades.time.idxmax()]
-
-
-def oldest_trade(trades):
-    """Return the oldest trade in the dataframe.
-
-    Args:
-        trades (pandas.DataFrame): dataframe of trades
-
-    Returns:
-        [pandas.Series]: oldest trade
-
-    """
-    return trades.loc[trades.time.idxmin()]
-
+# Feature extraction from database #
 
 def fetch_trades(start, end, product="BTC-USD"):
     """Return a dataframe of all the orders in the specified time window.
@@ -188,11 +179,12 @@ def fetch_trades(start, end, product="BTC-USD"):
 
     Returns:
         pandas.DataFrame: orders in the specified time window
-
     """
-    trades = Trade.select().where(
-        (Trade.product == product) & Trade.time.between(start, end)
-    ).namedtuples()
+    trades = (Trade
+              .select()
+              .where((Trade.product == product) &
+                     Trade.time.between(start, end))
+              .namedtuples())
     return pandas.DataFrame(trades)
 
 
@@ -216,17 +208,16 @@ def sliding_time_windows(start, end, freq, stride=100, chunksize=8):
     Returns:
         Generator[Tuple(datetime.datetime, datetime.datetime)]:
             a generator producing tuples like (window_start, window_end)
-
     """
     # A stride of 0 doesn't make sense because it would mean a 100% overlap
     # creating an infinite loop
     if not 0 < stride <= 100:
         raise ValueError(
-            "Stride value must be greater than 0 and less or equal to 100.")
+            'Stride value must be greater than 0 and less or equal to 100.')
 
     if (end - start) < freq:
         raise ValueError(
-            "Frequency must be less than the period between start and end")
+            'Frequency must be less than the period between start and end')
 
     offset = freq * stride / 100
 
@@ -239,8 +230,6 @@ def sliding_time_windows(start, end, freq, stride=100, chunksize=8):
             buffer.clear()
         start += offset
 
-# def features_from_subset(trades, start, end):
-
 
 def features_from_subset(trades, time_window):
     """
@@ -249,31 +238,31 @@ def features_from_subset(trades, time_window):
     try:
         trades_slice = trades[trades.time.between(*time_window)]
         return {
-            "buy_count": buy_count(trades_slice),
-            "sell_count": sell_count(trades_slice),
-            "total_buy_volume": total_buy_volume(trades_slice),
-            "total_sell_volume": total_sell_volume(trades_slice),
-            "price_mean": mean_price(trades_slice),
-            "price_std": price_std(trades_slice),
-            "price_movement": price_movement(trades_slice),
-            "start_time": time_window.start,
-            "end_time": time_window.end
+            'buy_count': buy_count(trades_slice),
+            'sell_count': sell_count(trades_slice),
+            'total_buy_volume': total_buy_volume(trades_slice),
+            'total_sell_volume': total_sell_volume(trades_slice),
+            'price_mean': mean_price(trades_slice),
+            'price_std': price_std(trades_slice),
+            'price_movement': price_movement(trades_slice),
+            'start_time': time_window.start,
+            'end_time': time_window.end
         }
     except (ValueError, AttributeError):
         return {
-            "buy_count": 0,
-            "sell_count": 0,
-            "total_buy_volume": 0,
-            "total_sell_volume": 0,
-            "price_mean": None,
-            "price_std": None,
-            "price_movement": None,
-            "start_time": time_window.start,
-            "end_time": time_window.end
+            'buy_count': 0,
+            'sell_count': 0,
+            'total_buy_volume': 0,
+            'total_sell_volume': 0,
+            'price_mean': None,
+            'price_std': None,
+            'price_movement': None,
+            'start_time': time_window.start,
+            'end_time': time_window.end
         }
 
 
-def batch_extract(start, end, res='10min', stride=10, products=("BTC-USD")):
+def batch_extract(start, end, res='10min', stride=10, products=('BTC-USD')):
     features = {}
     res = pandas.to_timedelta(res)
     with multiprocessing.Pool() as pool:
