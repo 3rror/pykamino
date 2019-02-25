@@ -25,7 +25,7 @@ def compute(*args, **kwargs):
 
 def export_trades(start, end, res, stride, products, path):
     interval = TimeWindow(start, end)
-    feats = trades.batch_extract(interval, res, stride, products)
+    feats = trades.extract(interval, res, stride, products)
     exporter.features_to_csv(feats, path + '/trades.csv')
 
 

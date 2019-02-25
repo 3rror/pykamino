@@ -259,18 +259,18 @@ def features_from_subset(trades, interval: TimeWindow):
         }
 
 
-def batch_extract(interval: TimeWindow, res='10min', stride=10, products=('BTC-USD')):
+def extract(interval: TimeWindow, res='10min', stride=10, products=('BTC-USD')):
     features = {}
     res = pandas.to_timedelta(res)
     with multiprocessing.Pool() as pool:
         for product in products:
-            output = pool.imap(extract,
+            output = pool.imap(_extract,
                                sliding_time_windows(interval, res, stride))
             features[product] = list(itertools.chain(*output))
     return features['BTC-USD']
 
 
-def extract(intervals: [TimeWindow]):
+def _extract(intervals: [TimeWindow]):
     range = TimeWindow(intervals[0].start, intervals[-1].end)
     trades = fetch_trades(range)
     return [features_from_subset(trades, w) for w in intervals]
