@@ -218,14 +218,11 @@ def sliding_time_windows(start, end, freq, stride=100, chunksize=8):
     if (end - start) < freq:
         raise ValueError(
             'Frequency must be less than the period between start and end')
-
     offset = freq * stride / 100
-
     buffer = []
     while start + freq <= end:
-        if len(buffer) <= chunksize:
-            buffer.append(TimeWindow(start, end=start + freq))
-        else:
+        buffer.append(TimeWindow(start, end=start + freq))
+        if len(buffer) >= chunksize:
             yield buffer
             buffer.clear()
         start += offset
