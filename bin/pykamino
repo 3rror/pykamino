@@ -61,21 +61,18 @@ feat_parser.add_argument(
     help='date and time string in ISO8601 format')
 feat_parser.add_argument(
     'resolution',
-    help='time resolution used in data sampling'
-)
+    help='time resolution used in data sampling')
 feat_parser.add_argument(
     '-p',
     '--path',
     help='where to store output files',
-    default='.'
-)
+    default='.')
 feat_parser.add_argument(
     '-s',
     '--stride',
     type=float,
     help='offset (in %%) of the next sample. Only meaningful for trades',
-    default=100
-)
+    default=100)
 
 
 args = parser.parse_args()
