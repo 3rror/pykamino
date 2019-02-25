@@ -263,14 +263,14 @@ def batch_extract(interval: TimeWindow, res='10min', stride=10, products=('BTC-U
     res = pandas.to_timedelta(res)
     with multiprocessing.Pool() as pool:
         for product in products:
-            output = pool.imap(extract, sliding_time_windows(
-                interval.start, interval.end, res, stride),  chunksize=200)
+            output = pool.imap(extract,
+                               sliding_time_windows(interval, res, stride),
+                               chunksize=200)
             features[product] = list(itertools.chain(output))
     return features['BTC-USD']
 
 
 def extract(intervals: [TimeWindow]):
-    start_first_window = intervals[0].start
-    end_last_windows = intervals[-1].end
-    trades = fetch_trades(start_first_window, end_last_windows)
+    range = TimeWindow(intervals[0].start, intervals[-1].end)
+    trades = fetch_trades(range)
     return [features_from_subset(trades, w) for w in intervals]
