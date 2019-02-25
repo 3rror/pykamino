@@ -7,6 +7,7 @@ from decimal import Decimal
 from peewee import SqliteDatabase
 from pykamino.db import Dbms, Order, OrderHistory, Trade, db_factory
 from pykamino.features import orders, trades
+from pykamino.features import TimeWindow
 
 
 class BaseTestCase(unittest.TestCase):
@@ -201,8 +202,8 @@ class TradeFeatures(BaseTestCase):
 
     def setUp(self):
         super().setUp()
-        self.dataframe = trades.fetch_trades(
-            self.START_DT, datetime.max, product='BTC-USD')
+        interval = TimeWindow(self.START_DT, datetime.max)
+        self.dataframe = trades.fetch_trades(interval, product='BTC-USD')
 
     def test_mean_price(self):
         self.assertEqual(trades.mean_price(self.dataframe), 6250)
@@ -229,8 +230,8 @@ class TradeFeatures(BaseTestCase):
     def test_features_from_subset(self):
         # Pandas can be very unintuitive. Let's test if we can get
         # features from a subset of the dataframe as well...
-        window = trades.TimeWindow(self.START_DT, self.START_DT + delta(minutes=46))
-        subset = trades.features_from_subset(self.dataframe, window)
+        interval = TimeWindow(self.START_DT, self.START_DT + delta(minutes=46))
+        subset = trades.features_from_subset(self.dataframe, interval)
         self.assertEqual(subset['price_mean'], 2500)
 
     # TODO: test CSV generation, not only calculations

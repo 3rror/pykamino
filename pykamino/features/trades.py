@@ -1,6 +1,5 @@
 import itertools
 import multiprocessing
-from itertools import islice
 
 import pandas
 
@@ -8,8 +7,8 @@ from pykamino.db import Trade, database
 from pykamino.features import TimeWindow
 from pykamino.features.decorators import rounded
 
-
 # Feature calcutation #
+
 
 def _buys(trades):
     """Return trades of type "buy" in the specified dataframe.
@@ -169,13 +168,12 @@ def price_movement(trades):
 
 # Feature extraction from database #
 
-def fetch_trades(start, end, product="BTC-USD"):
+def fetch_trades(interval: TimeWindow, product='BTC-USD'):
     """Return a dataframe of all the orders in the specified time window.
 
     Args:
-        start (datetime.datetime): start of the time window
-        end (datetime.datetime): end of the time window
-        product (str, optional): Defaults to "BTC-USD". Currency to consider
+        interval (TimeWindow): time window from which to fetch trades
+        product (str, optional): currency to consider. Defaults to "BTC-USD"
 
     Returns:
         pandas.DataFrame: orders in the specified time window
@@ -183,17 +181,16 @@ def fetch_trades(start, end, product="BTC-USD"):
     trades = (Trade
               .select()
               .where((Trade.product == product) &
-                     Trade.time.between(start, end))
+                     Trade.time.between(*interval))
               .namedtuples())
     return pandas.DataFrame(trades)
 
 
-def sliding_time_windows(start, end, freq, stride=100, chunksize=8):
+def sliding_time_windows(interval: TimeWindow, freq, stride=100, chunksize=8):
     """Return a generator of sliding time windows.
 
     Args:
-        start (datetime.datetime): start time
-        end (datetime.datetime): end time
+        interval (TimeWindow): upper and lower bounds
         freq (datetime.timedelta): resolution of each windows
         stride (int, optional):
             Defaults to 100. Offset of each time windows from the previous
@@ -206,7 +203,7 @@ def sliding_time_windows(start, end, freq, stride=100, chunksize=8):
             if frequency is greater than the period between start and end
 
     Returns:
-        Generator[Tuple(datetime.datetime, datetime.datetime)]:
+        Generator[TimeWindow]:
             a generator producing tuples like (window_start, window_end)
     """
     # A stride of 0 doesn't make sense because it would mean a 100% overlap
@@ -215,6 +212,8 @@ def sliding_time_windows(start, end, freq, stride=100, chunksize=8):
         raise ValueError(
             'Stride value must be greater than 0 and less or equal to 100.')
 
+    start = interval.start
+    end = interval.end
     if (end - start) < freq:
         raise ValueError(
             'Frequency must be less than the period between start and end')
@@ -228,12 +227,12 @@ def sliding_time_windows(start, end, freq, stride=100, chunksize=8):
         start += offset
 
 
-def features_from_subset(trades, time_window):
+def features_from_subset(trades, interval: TimeWindow):
     """
     TODO: Add doc
     """
     try:
-        trades_slice = trades[trades.time.between(*time_window)]
+        trades_slice = trades[trades.time.between(*interval)]
         return {
             'buy_count': buy_count(trades_slice),
             'sell_count': sell_count(trades_slice),
@@ -242,8 +241,8 @@ def features_from_subset(trades, time_window):
             'price_mean': mean_price(trades_slice),
             'price_std': price_std(trades_slice),
             'price_movement': price_movement(trades_slice),
-            'start_time': time_window.start,
-            'end_time': time_window.end
+            'start_time': interval.start,
+            'end_time': interval.end
         }
     except (ValueError, AttributeError):
         return {
@@ -254,24 +253,24 @@ def features_from_subset(trades, time_window):
             'price_mean': None,
             'price_std': None,
             'price_movement': None,
-            'start_time': time_window.start,
-            'end_time': time_window.end
+            'start_time': interval.start,
+            'end_time': interval.end
         }
 
 
-def batch_extract(start, end, res='10min', stride=10, products=('BTC-USD')):
+def batch_extract(interval: TimeWindow, res='10min', stride=10, products=('BTC-USD')):
     features = {}
     res = pandas.to_timedelta(res)
     with multiprocessing.Pool() as pool:
         for product in products:
             output = pool.imap(extract, sliding_time_windows(
-                start, end, res, stride),  chunksize=200)
+                interval.start, interval.end, res, stride),  chunksize=200)
             features[product] = list(itertools.chain(output))
     return features['BTC-USD']
 
 
-def extract(windows):
-    start_first_window = windows[0].start
-    end_last_windows = windows[-1].end
+def extract(intervals: [TimeWindow]):
+    start_first_window = intervals[0].start
+    end_last_windows = intervals[-1].end
     trades = fetch_trades(start_first_window, end_last_windows)
-    return [features_from_subset(trades, w) for w in windows]
+    return [features_from_subset(trades, w) for w in intervals]
