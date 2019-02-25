@@ -265,9 +265,8 @@ def batch_extract(interval: TimeWindow, res='10min', stride=10, products=('BTC-U
     with multiprocessing.Pool() as pool:
         for product in products:
             output = pool.imap(extract,
-                               sliding_time_windows(interval, res, stride),
-                               chunksize=200)
-            features[product] = list(itertools.chain(output))
+                               sliding_time_windows(interval, res, stride))
+            features[product] = list(itertools.chain(*output))
     return features['BTC-USD']
 
 
