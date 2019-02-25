@@ -226,7 +226,7 @@ def sliding_time_windows(interval: TimeWindow, freq, stride=100, chunksize=8):
             buffer.clear()
         start += offset
     if buffer:
-        yield buffer.copy()
+        yield buffer
 
 def features_from_subset(trades, interval: TimeWindow):
     """
