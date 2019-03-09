@@ -1,25 +1,34 @@
+import itertools
+import multiprocessing
 import os
 from datetime import datetime
-from itertools import repeat
-import multiprocessing
-from statistics import mean
 from decimal import Decimal
+from itertools import repeat
+from statistics import mean
 
 import numpy as np
-import pandas
-from pykamino.db import Order as O
-from pykamino.db import OrderHistory as Oh
+import pandas as pd
+
+from pykamino.db import OrderState
+from pykamino.features import TimeWindow
 from pykamino.features.decorators import rounded
+from pykamino.features.trades import sliding_time_windows
 
 
 def asks(orders):
     """Ask orders sorted by price."""
-    return orders[orders.side == 'ask']
+    ask_orders = orders[orders.side == 'ask']
+    if ask_orders.empty:
+        raise ValueError('No ask orders in the dataframe.')
+    return ask_orders
 
 
 def bids(orders):
     """Bid orders sorted by price."""
-    return orders[orders.side == "bid"]
+    bid_orders = orders[orders.side == 'bid']
+    if bid_orders.empty:
+        raise ValueError('No bid orders in the dataframe.')
+    return bid_orders
 
 
 def best_ask_order(orders):
@@ -60,8 +69,9 @@ def best_ask_amount(orders):
     The best ask price is the minimum price sellers are willing to
     accept.
     """
-    best_price_mask = asks(orders).price == best_ask_price(orders)
-    return asks(orders)[best_price_mask].sum().amount
+    ask_orders = asks(orders)
+    best_price_mask = ask_orders.price == best_ask_price(orders)
+    return ask_orders[best_price_mask].sum().amount
 
 
 def best_bid_amount(orders):
@@ -70,8 +80,9 @@ def best_bid_amount(orders):
     The best bid price is the maximum price buyers are willing to
     pay.
     """
-    best_price_mask = bids(orders).price == best_bid_price(orders)
-    return bids(orders)[best_price_mask].sum().amount
+    bid_orders = asks(orders)
+    best_price_mask = bid_orders.price == best_bid_price(orders)
+    return bid_orders[best_price_mask].sum().amount
 
 
 @rounded
@@ -106,7 +117,10 @@ def bid_depth(orders):
 
 
 def ask_depth_chart(orders):
-    return (asks(orders)
+    ask_orders = asks(orders)
+    if ask_orders.empty:
+        raise ValueError('No ask orders in the dataframe.')
+    return (ask_orders
             .sort_values(by="price")
             .groupby("price")
             .sum().amount
@@ -114,7 +128,10 @@ def ask_depth_chart(orders):
 
 
 def bid_depth_chart(orders):
-    return (bids(orders)
+    bid_orders = bids(orders)
+    if bid_orders.empty:
+        raise ValueError('No bid orders in the dataframe.')
+    return (bid_orders
             .sort_values(by="price")
             .groupby("price")
             .sum().amount
@@ -126,10 +143,10 @@ def bid_depth_chart(orders):
 
 def ask_depth_chart_bins(orders, bins=10):
     ask_part = ask_depth_chart(orders)
-    ask_part = ask_part.astype({'price': float, 'amount': float})
+    ask_part = ask_part
     ask_part = ask_part[ask_part.price < 1.99 * float(mid_market_price(orders))]
     ask_bins = ask_part.groupby(
-        pandas.cut(
+        pd.cut(
             ask_part.price,
             np.linspace(ask_part.price.min(), ask_part.price.max(), bins),
         )
@@ -140,10 +157,10 @@ def ask_depth_chart_bins(orders, bins=10):
 
 def bid_depth_chart_bins(orders, bins=10):
     bid_part = bid_depth_chart(orders)
-    bid_part = bid_part.astype({'price': float, 'amount': float})
+    bid_part = bid_part
     bid_part = bid_part[bid_part.price > 0.01 * float(mid_market_price(orders))]
     bid_bins = bid_part.groupby(
-        pandas.cut(
+        pd.cut(
             bid_part.price,
             np.linspace(bid_part.price.min(), bid_part.price.max(), bins),
         )
@@ -211,40 +228,44 @@ def compute_all(orders):
     }
 
 
-def select_orders(start_dt, end_dt, products):
-    orders = (
-        list(O.select(O.id, O.side, O.price, O.close_time, Oh.time, Oh.amount)
-             .join(Oh)
-             .where((Oh.time <= end_dt) &
-                    ((O.close_time > start_dt) | (O.close_time == None)) &
-                    O.product.in_(products))
-             .order_by(Oh.time).dicts()))
+def fetch_orders(interval, product='BTC-USD'):
+    orders = (OrderState
+              .select(
+                  OrderState.side, OrderState.price, OrderState.amount, OrderState.starting_at, OrderState.ending_at)
+              .where(
+                    (OrderState.product == product) &
+                    (OrderState.starting_at <= interval.end) &
+                    (
+                        (OrderState.ending_at > interval.start) |
+                        (OrderState.ending_at == None)
+                    )
+              )
+              .namedtuples())
 
-    return pandas.DataFrame(orders)
-
-
-def order_book_from_cache(orders, instant):
-    filt = ((orders.time <= instant) &
-            ((orders.close_time > instant) | orders.close_time.isnull()))
-    # Careful! This expects the orders to be sorted by orders' insertion time
-    return orders[filt].drop_duplicates(subset='id', keep='last')
+    return pd.DataFrame(orders)
 
 
-def features_in_subset(orders, instant):
-    order_book = order_book_from_cache(orders, instant)
-    if len(order_book) == 0:
-        return None
-    return compute_all(order_book)
-
-
-def extract(start_dt, end_dt, resolution='1min', products=['BTC-USD']):
-    # orders_in_time_window is used to cache what we're about to analyze
-    # in RAM within a single pass. We don't want to continuously query the DB.
-    order_cache = select_orders(start_dt, end_dt, products)
-    windows = pandas.date_range(start=start_dt, end=end_dt,
-                                freq=resolution).tolist()
+def extract(interval: TimeWindow, res='10min', stride=10, products=('BTC-USD')):
+    features = {}
+    res = pd.to_timedelta(res)
     with multiprocessing.Pool() as pool:
-        features = pool.starmap(features_in_subset,
-                                zip(repeat(order_cache), windows))
-    features = [f for f in features if f is not None]
-    return features
+        for product in products:
+            output = pool.imap(_extract,
+                               sliding_time_windows(interval, res, stride=100, chunksize=25))
+            features[product] = list(itertools.chain(*output))
+    return features['BTC-USD']
+
+
+def _extract(intervals):
+    range = TimeWindow(intervals[0].start, intervals[-1].end)
+    orders = fetch_orders(range)
+    return [features_from_subset(orders, w) for w in intervals]
+
+
+def features_from_subset(orders, interval: TimeWindow):
+    if len(orders) == 0:
+        return None
+    filt = ((orders.starting_at <= interval[0]) &
+            ((orders.ending_at > interval[0]) | orders.ending_at.isnull()))
+    orders = orders[filt].astype({'price': float, 'amount': float})
+    return {**compute_all(orders), 'timestamp': interval[0]}

@@ -5,7 +5,8 @@ from math import ceil
 from os import cpu_count
 
 from peewee import (SQL, BigIntegerField, CharField, DateTimeField,
-                    DecimalField, ForeignKeyField, Model, Proxy, UUIDField)
+                    DecimalField, ForeignKeyField, Model, Proxy, UUIDField,
+                    CompositeKey)
 from playhouse.pool import (PooledMySQLDatabase, PooledPostgresqlDatabase,
                             PooledSqliteDatabase)
 
@@ -93,3 +94,19 @@ class OrderHistory(BaseModel):
 
     class Meta:
         constraints = [SQL('UNIQUE (amount, order_id)')]
+
+
+class OrderState(BaseModel):
+    order_id = UUIDField()
+    product = CharField(7)
+    side = CharField(4)
+    price = CurrencyField()
+    amount = CurrencyField()
+    starting_at = Iso8601DateTimeField()
+    ending_at = Iso8601DateTimeField(null=True)
+
+    class Meta:
+        primary_key = CompositeKey('order_id', 'starting_at')
+        #
+        table_name = 'order_states'
+        indexes = ((('product', 'ending_at', 'starting_at'), False),)
