@@ -80,7 +80,7 @@ def best_bid_amount(orders):
     The best bid price is the maximum price buyers are willing to
     pay.
     """
-    bid_orders = asks(orders)
+    bid_orders = bids(orders)
     best_price_mask = bid_orders.price == best_bid_price(orders)
     return bid_orders[best_price_mask].sum().amount
 
