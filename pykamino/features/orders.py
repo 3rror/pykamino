@@ -148,9 +148,7 @@ def ask_depth_chart_bins(orders, bins=10):
     ask_bins = ask_part.groupby(
         pd.cut(
             ask_part.price,
-            np.linspace(ask_part.price.min(), ask_part.price.max(), bins),
-        )
-    )
+            np.linspace(ask_part.price.min(), ask_part.price.max(), bins)))
     return ask_bins.mean().itertuples(index=False)
 
 
@@ -161,9 +159,7 @@ def bid_depth_chart_bins(orders, bins=10):
     bid_bins = bid_part.groupby(
         pd.cut(
             bid_part.price,
-            np.linspace(bid_part.price.min(), bid_part.price.max(), bins),
-        )
-    )
+            np.linspace(bid_part.price.min(), bid_part.price.max(), bins)))
     return bid_bins.mean().iloc[::-1].itertuples(index=False)
 
 
@@ -199,29 +195,18 @@ def compute_all(orders):
     def _ask_depth_chart_bins(orders, count):
         bins = {}
         depth_chart = ask_depth_chart_bins(orders, count+1)
-        for index, seq in enumerate(depth_chart):
-            amount, price = seq
-            bins[f"ask_depth_chart_bin{index}"] = amount
-            bins[f"ask_depth_chart_bin_price{index}"] = price
+        for index, point in enumerate(depth_chart):
+            bins[f"ask_depth_chart_bin{index}"] = point.amount
+            bins[f"ask_depth_chart_bin_price{index}"] = point.price
         return bins
-        # return {
-        #     f"ask_depth_chart_bin{i}": ask_depth_chart_bins(orders, count+1)[i[0]],
-        #     for i in range(count)
-        # }
 
     def _bid_depth_chart_bins(orders, count):
         bins = {}
         depth_chart = bid_depth_chart_bins(orders, count+1)
-        for index, seq in enumerate(depth_chart):
-            amount, price = seq
-            bins[f"bid_depth_chart_bin{index}"] = amount
-            bins[f"bid_depth_chart_bin_price{index}"] = price
+        for index, point in enumerate(depth_chart):
+            bins[f"bid_depth_chart_bin{index}"] = point.amount
+            bins[f"bid_depth_chart_bin_price{index}"] = point.price
         return bins
-        # return {
-        #     f"bid_depth_chart_bin{i}": bid_depth_chart_bins(orders, count+1)[i[0]],
-        #     f"bid_depth_chart_bin_price{i}": bid_depth_chart_bins(orders, count+1)[i[1]]
-        #     for i in range(count)
-        # }
 
     return {
         "mid_market_price": mid_market_price(orders),
