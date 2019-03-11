@@ -120,7 +120,6 @@ def ask_depth_chart(orders):
     if ask_orders.empty:
         raise ValueError('No ask orders in the dataframe.')
     return (ask_orders
-            .sort_values(by="price")
             .groupby("price")
             .sum().amount
             .cumsum().reset_index())
