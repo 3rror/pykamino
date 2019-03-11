@@ -10,9 +10,8 @@ import numpy as np
 import pandas as pd
 
 from pykamino.db import OrderState
-from pykamino.features import TimeWindow
+from pykamino.features import TimeWindow, sliding_time_windows
 from pykamino.features.decorators import rounded
-from pykamino.features.trades import sliding_time_windows
 
 
 def asks(orders):
