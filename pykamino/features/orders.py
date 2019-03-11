@@ -159,7 +159,7 @@ def bid_depth_chart_bins(orders, bins=10):
         pd.cut(
             bid_part.price,
             np.linspace(bid_part.price.min(), bid_part.price.max(), bins)))
-    return bid_bins.mean().iloc[::-1].itertuples(index=False)
+    return bid_bins.mean().itertuples(index=False)
 
 
 def volume(orders):
