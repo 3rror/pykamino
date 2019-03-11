@@ -130,7 +130,6 @@ def bid_depth_chart(orders):
     if bid_orders.empty:
         raise ValueError('No bid orders in the dataframe.')
     return (bid_orders
-            .sort_values(by="price")
             .groupby("price")
             .sum().amount
             .iloc[::-1]
