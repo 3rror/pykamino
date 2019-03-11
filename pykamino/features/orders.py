@@ -151,9 +151,7 @@ def ask_depth_chart_bins(orders, bins=10):
             np.linspace(ask_part.price.min(), ask_part.price.max(), bins),
         )
     )
-    # ask_samples = ask_bins.mean().amount.tolist()
-    # return ask_samples
-    return zip(ask_bins.mean().amount.tolist(), ask_bins.mean().price.tolist())
+    return ask_bins.mean().itertuples(index=False)
 
 
 def bid_depth_chart_bins(orders, bins=10):
@@ -166,9 +164,7 @@ def bid_depth_chart_bins(orders, bins=10):
             np.linspace(bid_part.price.min(), bid_part.price.max(), bins),
         )
     )
-    # bid_samples = bid_bins.mean().iloc[::-1].amount.tolist()
-    # return bid_samples
-    return zip(bid_bins.mean().iloc[::-1].amount.tolist(), bid_bins.mean().iloc[::-1].price.tolist())
+    return bid_bins.mean().iloc[::-1].itertuples(index=False)
 
 
 def volume(orders):
