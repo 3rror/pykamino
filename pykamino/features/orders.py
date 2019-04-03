@@ -231,7 +231,7 @@ def fetch_orders(interval, product='BTC-USD'):
                     (OrderState.starting_at <= interval.end) &
                     (
                         (OrderState.ending_at > interval.start) |
-                        (OrderState.ending_at == None)
+                        (OrderState.ending_at is None)
                     )
               )
               .namedtuples())
