@@ -15,10 +15,19 @@ from pykamino.features import TimeWindow, sliding_time_windows
 from pykamino.features.decorators import rounded
 
 
+def memoize(func):
+    def wrapper(*args):
+        # args[0] is "self"
+        if func not in args[0]._cache:
+            args[0]._cache[func] = func(*args)
+        return args[0]._cache[func]
+    return wrapper
+
 class FeatureCalculator():
     def __init__(self, orders, timestamp):
         self._orders = self._filter_by_timestamp(orders, timestamp)
         self.timestamp = timestamp
+        self._cache = {}
 
     def _filter_by_timestamp(self, orders, timestamp):
         if len(orders) == 0:
@@ -27,7 +36,7 @@ class FeatureCalculator():
                     ((orders.ending_at > timestamp) | orders.ending_at.isnull()))
         return orders[are_open].astype({'price': float, 'amount': float})
 
-    @lru_cache()
+    @memoize
     def asks(self):
         """Ask orders sorted by price."""
         ask_orders = self._orders[self._orders.side == 'ask']
@@ -35,7 +44,7 @@ class FeatureCalculator():
             raise ValueError('No ask orders in the dataframe.')
         return ask_orders
 
-    @lru_cache()
+    @memoize
     def bids(self):
         """Bid orders sorted by price."""
         bid_orders = self._orders[self._orders.side == 'bid']
@@ -43,7 +52,6 @@ class FeatureCalculator():
             raise ValueError('No bid orders in the dataframe.')
         return bid_orders
 
-    @lru_cache()
     def best_ask_order(self):
         """
         Ask order with the minimimum price.
@@ -55,7 +63,7 @@ class FeatureCalculator():
                 .sort_values(["price", "amount"], ascending=[True, False])
                 .iloc[0])
 
-    @lru_cache()
+    @memoize
     def best_bid_order(self):
         """
         Bid order with the maximum price.
@@ -90,10 +98,10 @@ class FeatureCalculator():
         The best bid price is the maximum price buyers are willing to
         pay.
         """
-        best_price_mask = self.asks().price == self.best_bid_price()
-        return self.asks()[best_price_mask].sum().amount
+        best_price_mask = self.bids().price == self.best_bid_price()
+        return self.bids()[best_price_mask].sum().amount
 
-    @lru_cache()
+    @memoize
     @rounded
     def mid_market_price(self):
         """
@@ -113,24 +121,24 @@ class FeatureCalculator():
         """
         return self.best_bid_price() - self.best_ask_price()
 
-    @lru_cache()
+    @memoize
     def ask_depth(self):
         """Number of ask orders."""
         return len(self.asks())
 
-    @lru_cache()
+    @memoize
     def bid_depth(self):
         """Number of bid orders."""
         return len(self.bids())
 
-    @lru_cache()
+    @memoize
     def ask_depth_chart(self):
         return (self.asks()
                 .groupby("price")
                 .sum().amount
                 .cumsum().reset_index())
 
-    @lru_cache()
+    @memoize
     def bid_depth_chart(self):
         return (self.bids()
                 .groupby("price")
@@ -169,13 +177,13 @@ class FeatureCalculator():
     def bid_volume(self):
         return self._volume(self.bids())
 
-    @lru_cache()
+    @memoize
     @rounded
     def ask_volume_weighted(self):
         mmp = self.mid_market_price()
         return self.asks().amount.dot(self.asks().price.subtract(mmp).rdiv(1))
 
-    @lru_cache()
+    @memoize
     @rounded
     def bid_volume_weighted(self):
         mmp = self.mid_market_price()
@@ -241,7 +249,7 @@ def extract(interval: TimeWindow, res='10min', stride=10, products=('BTC-USD')):
     with multiprocessing.Pool() as pool:
         for product in products:
             output = pool.imap(_extract,
-                               sliding_time_windows(interval, res, stride=100, chunksize=25))
+                               sliding_time_windows(interval, res, stride=100, chunksize=50))
             features[product] = list(itertools.chain(*output))
     return features['BTC-USD']
 
