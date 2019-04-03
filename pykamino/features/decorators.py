@@ -10,12 +10,9 @@ def rounded(func=None, *, ndigits=8):
         @wraps(function)
         def round_it(*args, **kwargs):
             num = func(*args, **kwargs)
-            if num is None:
-                return None
-            elif num == 0:
-                return 0
-            else:
-                return round(num, ndigits)
+            if num is None or num == 0:
+                return num
+            return round(num, ndigits)
         return round_it
     if func:
         return decorate(func)
