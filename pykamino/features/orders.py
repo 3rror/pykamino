@@ -18,13 +18,14 @@ def memoize(func):
         return args[0]._cache[func]
     return wrapper
 
+
 class FeatureCalculator():
     def __init__(self, orders, timestamp):
-        self._orders = self._filter_by_timestamp(orders, timestamp)
+        self._orders = self._open_orders_at_timestamp(orders, timestamp)
         self.timestamp = timestamp
         self._cache = {}
 
-    def _filter_by_timestamp(self, orders, timestamp):
+    def _open_orders_at_timestamp(self, orders, timestamp):
         if len(orders) == 0:
             raise ValueError(f'No open orders at timestamp {timestamp}.')
         are_open = ((orders.starting_at <= timestamp) &
