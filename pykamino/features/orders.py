@@ -47,6 +47,7 @@ class FeatureCalculator():
             raise ValueError('No bid orders in the dataframe.')
         return bid_orders
 
+    @memoize
     def best_ask_order(self):
         """
         Ask order with the minimimum price.
