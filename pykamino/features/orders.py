@@ -248,6 +248,7 @@ def extract(interval: TimeWindow, res='10min', stride=10, products=('BTC-USD')):
             output = pool.imap(_extract,
                                sliding_time_windows(interval, res, stride=100, chunksize=50))
             features[product] = list(itertools.chain(*output))
+    # TODO: Support multiple currencies. For now we consider only BTC
     return features['BTC-USD']
 
 
