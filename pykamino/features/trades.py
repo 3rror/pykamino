@@ -3,7 +3,7 @@ import multiprocessing
 
 import pandas
 
-from pykamino.db import Trade, database
+from pykamino.db import Trade
 from pykamino.features import TimeWindow, sliding_time_windows
 from pykamino.features.decorators import rounded
 
