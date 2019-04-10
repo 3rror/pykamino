@@ -28,9 +28,11 @@ class FeatureCalculator():
     def _open_orders_at_timestamp(self, orders, timestamp):
         if len(orders) == 0:
             raise ValueError(f'No open orders at timestamp {timestamp}.')
-        are_open = ((orders.starting_at <= timestamp) &
-                    ((orders.ending_at > timestamp) | orders.ending_at.isnull()))
-        return orders[are_open].astype({'price': float, 'amount': float})
+        condition = (
+            (orders.starting_at <= timestamp) &
+            ((orders.ending_at > timestamp) | orders.ending_at.isnull()))
+        open_orders = orders[condition]
+        return open_orders.astype({'price': float, 'amount': float})
 
     @memoize
     def asks(self):
