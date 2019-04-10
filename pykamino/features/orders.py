@@ -236,7 +236,6 @@ def fetch_orders(interval, product='BTC-USD'):
                     )
               )
               .namedtuples())
-
     return pd.DataFrame(orders)
 
 
