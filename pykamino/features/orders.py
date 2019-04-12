@@ -230,13 +230,8 @@ def fetch_orders(interval, product='BTC-USD'):
               .select(
                   OrderState.side, OrderState.price, OrderState.amount, OrderState.starting_at, OrderState.ending_at)
               .where(
-                    (OrderState.product == product) &
-                    (OrderState.starting_at <= interval.end) &
-                    (
-                        (OrderState.ending_at > interval.start) |
-                        (OrderState.ending_at is None)
-                    )
-              )
+                    (OrderState.product == product) & (OrderState.starting_at <= interval.end) &
+                    ((OrderState.ending_at > interval.start) | (OrderState.ending_at.is_null())))
               .namedtuples())
     return pd.DataFrame(orders)
 
