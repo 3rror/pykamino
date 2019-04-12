@@ -217,7 +217,7 @@ def features_from_subset(trades, interval: TimeWindow):
         }
 
 
-def extract(interval: TimeWindow, res='10min', stride=10, products=('BTC-USD')):
+def extract(interval: TimeWindow, res='2min', stride=10, products=('BTC-USD')):
     features = {}
     res = pandas.to_timedelta(res)
     with multiprocessing.Pool() as pool:
