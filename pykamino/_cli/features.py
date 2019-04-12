@@ -29,8 +29,8 @@ def export_trades(start, end, res, stride, products, path):
     exporter.features_to_csv(feats, path + '/trades.csv')
 
 
-def export_orders(start, end, res, stride, products, path, **kwargs):
+def export_orders(start, end, res, products, path, **kwargs):
     # feats = orders.extract(start, end, res, products)
     interval = TimeWindow(start, end)
-    feats = orders.extract(interval, res, stride, products)
+    feats = orders.extract(interval, res, products)
     exporter.features_to_csv(feats, path + '/orders.csv')
