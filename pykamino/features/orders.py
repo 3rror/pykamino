@@ -251,8 +251,9 @@ def extract(interval: TimeWindow, res='2min', products=('BTC-USD')):
 def _extract(intervals):
     range = TimeWindow(intervals[0].start, intervals[-1].end)
     orders = fetch_orders(range)
-    return [features_from_subset(orders, w.start) for w in intervals]
-
+    instants = [i.start for i in intervals]
+    instants.append(intervals[-1].end)
+    return [features_from_subset(orders, i) for i in instants]
 
 def features_from_subset(orders, instant):
     if len(orders) == 0:
