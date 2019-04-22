@@ -108,4 +108,5 @@ class OrderState(BaseModel):
     class Meta:
         primary_key = CompositeKey('order_id', 'starting_at')
         table_name = 'order_states'
+        # Note: the ending comma is required
         indexes = ((('product', 'ending_at', 'starting_at'), False),)
