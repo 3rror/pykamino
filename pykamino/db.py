@@ -10,8 +10,8 @@ from peewee import (SQL, BigIntegerField, CharField, DateTimeField,
 from playhouse.pool import (PooledMySQLDatabase, PooledPostgresqlDatabase,
                             PooledSqliteDatabase)
 
-# We want the database to be dinamically defined, so that we
-# can support different DBMSs. In order to do that, we first declare a placeholder.
+# We want the database to be dinamically defined, so that we can support
+# different DBMSs. In order to do that, we first declare a placeholder.
 database = Proxy()
 
 
