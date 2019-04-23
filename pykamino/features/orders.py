@@ -54,8 +54,8 @@ class FeatureCalculator():
     def best_ask_order(self):
         """
         Ask order with the minimimum price.
-        If there are more orders with the same price, the one with the
-        maximum amount is returned.
+        If there are more orders with the same price, the one with the maximum
+        amount is returned.
         """
         return (self
                 .asks()
@@ -66,8 +66,8 @@ class FeatureCalculator():
     def best_bid_order(self):
         """
         Bid order with the maximum price.
-        If there are more orders with the same price, the one with the
-        minimum amount is returned.
+        If there are more orders with the same price, the one with the minimum
+        amount is returned.
         """
         return (self
                 .bids()
@@ -85,8 +85,7 @@ class FeatureCalculator():
     def best_ask_amount(self):
         """
         Total amount of assets of the ask orders at the best price.
-        The best ask price is the minimum price sellers are willing to
-        accept.
+        The best ask price is the minimum price sellers are willing to accept.
         """
         best_price_mask = self.asks().price == self.best_ask_price()
         return self.asks()[best_price_mask].sum().amount
@@ -94,8 +93,7 @@ class FeatureCalculator():
     def best_bid_amount(self):
         """
         Total amount of assets of the bid orders at the best price.
-        The best bid price is the maximum price buyers are willing to
-        pay.
+        The best bid price is the maximum price buyers are willing to pay.
         """
         best_price_mask = self.bids().price == self.best_bid_price()
         return self.bids()[best_price_mask].sum().amount
@@ -132,14 +130,16 @@ class FeatureCalculator():
 
     @memoize
     def ask_depth_chart(self):
-        return (self.asks()
+        return (self
+                .asks()
                 .groupby("price")
                 .sum().amount
                 .cumsum().reset_index())
 
     @memoize
     def bid_depth_chart(self):
-        return (self.bids()
+        return (self
+                .bids()
                 .groupby("price")
                 .sum().amount
                 .iloc[::-1]
