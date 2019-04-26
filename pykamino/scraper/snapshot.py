@@ -1,17 +1,18 @@
 from datetime import datetime
 
 import cbpro
-from peewee import UUIDField, fn
-from pykamino.db import BaseModel, Order
-from pykamino.db import OrderHistory as History
-from pykamino.db import Trade, database
+from peewee import fn
+
+from pykamino.db import BaseModel, OrderState
+from pykamino.db import database
 
 cbpro_client = cbpro.PublicClient()
 
 
 class Snapshot:
     """
-    An order book snapshot, i.e. the orders waiting to be filled at a given time.
+    An order book snapshot, i.e. the orders waiting to be filled at a given
+    time.
     """
 
     def __init__(self, product='BTC-USD'):
@@ -22,30 +23,24 @@ class Snapshot:
     def download(self):
         cbpro_snap = cbpro_client.get_product_order_book(self.product, level=3)
         self.sequence = cbpro_snap['sequence']
-        for side in (k for k in cbpro_snap if k in ['bids', 'asks']):
-            for order in cbpro_snap[side]:
-                # side[:-1]: Remove the trailing 's' for plural nouns (eg: asks -> ask)
-                self._snap.append({'price': order[0],
-                                   'amount': order[1],
-                                   'id': order[2],
+        for side in ('bids', 'asks'):
+            for order_msg in cbpro_snap[side]:
+                self._snap.append({'price': order_msg[0],
+                                   'amount': order_msg[1],
+                                   'order_id': order_msg[2],
                                    'product': self.product,
+                                   # Remove the trailing 's' for plural nouns
+                                   # eg: asks -> ask
                                    'side': side[:-1]})
         return self.sequence
 
     def to_models(self):
         """
-        An iterator over every order in the book, yielding
-        a pair of database models.
-
-        Returns:
-            a tuple at every iteration, composed of an Order instance
-            and a Timeline instance.
+        An iterator over every order in the snapshot, yielding a database
+        model.
         """
         for book_order in self:
-            order = Order(**book_order)
-            book_order.pop('id')
-            timeline = History(order=order, **book_order)
-            yield order, timeline
+            yield OrderState({**book_order, 'starting_at': datetime.now()})
 
     @staticmethod
     def _add_order_field(book_order):
@@ -55,27 +50,26 @@ class Snapshot:
 
     def _close_old_orders(self):
         self.TempSnapshot.create_table()
-        self.TempSnapshot.insert_many(self, fields=['id']).execute()
-        in_book = self.TempSnapshot.select().where(self.TempSnapshot.id == Order.id)
-        Order.update(close_time=datetime.now()).where(
-            ~fn.EXISTS(in_book), Order.close_time is None).execute()
-        # Empty the temporary table
-        self.TempSnapshot.raw('TRUNCATE TABLE {}'.format(
-            self.TempSnapshot._meta.table_name))
+        self.TempSnapshot.insert_many(self, fields=['order_id', 'amount']).execute()
+        still_open = (self.TempSnapshot
+                        .select()
+                        .where((self.TempSnapshot.order_id == OrderState.order_id) &
+                               (OrderState.ending_at.is_null()) &
+                               (self.TempSnapshot.amount == OrderState.amount)))
+        OrderState.update(ending_at=datetime.now()) \
+                  .where(~fn.EXISTS(still_open), OrderState.ending_at.is_null()).execute()
+        # Remove the temporary table
+        self.TempSnapshot.drop_table()
 
     def insert(self, clear=True):
         """
         Store the snapshot in the database.
-        This will also take care of closing orders that are not in the book anymore.
+
+        This will also take care of closing orders that are not in the book
+        anymore.
         """
-        timelines = (self._add_order_field(book_order) for book_order in self)
-        with database.atomic():
-            self._close_old_orders()
-            with database.atomic():
-                Order.insert_many(self, fields=['id', 'side', 'price', 'product']).on_conflict(
-                    'ignore').execute()
-                History.insert_many(timelines, fields=['amount', 'order']).on_conflict(
-                    'ignore').execute()
+        self._close_old_orders()
+        OrderState.insert_many(self, fields=['order_id', 'product', 'side', 'price', 'amount', 'starting_at']).execute()
         if clear:
             self.clear()
 
@@ -92,10 +86,12 @@ class Snapshot:
     class TempSnapshot(BaseModel):
         """
         A temporary table in lieu of a `NOT IN` clause for performance reasons.
-        Its purpose is to check what open orders are in the database, but not in the
-        snapshot, so that we know these orders, in reality, are now in a closed state.
+        Its purpose is to check what open orders are in the database, but not
+        in the snapshot, so that we know these orders, in reality, are now in a
+        closed state.
         """
-        id = type(Order.id)(primary_key=True)
+        order_id = type(OrderState.order_id)(primary_key=True)
+        amount = type(OrderState.amount)()
 
         class Meta:
             temporary = True

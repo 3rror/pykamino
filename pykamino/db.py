@@ -1,4 +1,4 @@
-import datetime
+from datetime import datetime
 from enum import Enum
 from functools import partial
 from math import ceil
@@ -79,30 +79,13 @@ class Trade(BaseModel):
         indexes = ((('product', 'time'), False),)
 
 
-class Order(BaseModel):
-    id = UUIDField(primary_key=True)
-    side = CharField(4)
-    product = CharField(7)
-    price = CurrencyField()
-    close_time = Iso8601DateTimeField(null=True)
-
-
-class OrderHistory(BaseModel):
-    amount = CurrencyField()
-    time = Iso8601DateTimeField(default=datetime.datetime.now)
-    order = ForeignKeyField(Order, backref='history')
-
-    class Meta:
-        constraints = [SQL('UNIQUE (amount, order_id)')]
-
-
 class OrderState(BaseModel):
     order_id = UUIDField()
     product = CharField(7)
     side = CharField(4)
     price = CurrencyField()
     amount = CurrencyField()
-    starting_at = Iso8601DateTimeField()
+    starting_at = Iso8601DateTimeField(default=datetime.now())
     ending_at = Iso8601DateTimeField(null=True)
 
     class Meta:

@@ -1,14 +1,14 @@
-from datetime import datetime
 from queue import Queue
 from threading import Condition, Event, Thread
 
 from cbpro import WebsocketClient
 
 from peewee import Case
-from pykamino.db import Order
-from pykamino.db import OrderHistory as History
-from pykamino.db import Trade, database
+from pykamino.db import OrderState
+from pykamino.db import Trade
 from pykamino.scraper.snapshot import Snapshot
+
+from datetime import datetime
 
 
 class Client():
@@ -67,8 +67,8 @@ class GracefulThread(Thread):
     """
     A thread that can be graceously stopped by calling `stop()`.
 
-    Override `task()` to define its activity. Do note that `task()`
-    will be called in a loop.
+    Override `task()` to define its activity. Do note that `task()` will be
+    called in a loop.
     """
 
     def __init__(self):
@@ -128,56 +128,83 @@ class MessageStorer(GracefulThread):
     def task(self):
         with filt_msgs_lock:
             filt_msgs_lock.wait()
-            trades = (m for m in filtered_msgs if m['type'] == 'match')
-            orders = (m for m in filtered_msgs if m['type'] not in
-                      ['activate', 'match', 'received'])
-            self.store_messages(orders, trades)
+            self.store_messages()
             filtered_msgs.clear()
 
-    def store_messages(self, orders, trades):
-        new_ord, hist, to_close = self.classify_orders(orders)
-        trades = [msg_to_trade_dict(t) for t in trades]
-        id_then_time = Case(Order.id, [(o['id'], datetime.strptime(
-            o['close_time'], Order.close_time.formats[0])) for o in to_close])
-        with database.atomic():
-            if trades:
-                Trade.insert_many(trades).execute()
-            Order.insert_many(new_ord).execute()
-            History.insert_many(hist).execute()
-            with database.atomic():
-                Order.update(close_time=id_then_time).where(
-                    Order.id.in_([o['id'] for o in to_close])).execute()
+    def _split_orders_trades(self):
+        order_msgs = []
+        trade_msgs = []
 
-    def classify_orders(self, orders):
+        for msg in filtered_msgs:
+            if msg['type'] == 'match':
+                trade_msgs.append(msg)
+                continue
+            if msg['type'] not in ('activate', 'received'):
+                order_msgs.append(msg)
+        return order_msgs, trade_msgs
+
+    def _split_orders(self, order_msgs):
+        orders_to_close = []
         new_orders = []
-        history = []
-        to_close = []
-        for o in orders:
-            if o['type'] == 'done':
-                to_close.append(msg_to_order_dict(o))
-            elif o['type'] == 'change':
-                history.append(msg_to_history_dict(o))
-            else:
-                new_orders.append(msg_to_order_dict(o))
-                history.append(msg_to_history_dict(o))
-        return new_orders, history, to_close
+        for order_msg in order_msgs:
+            if order_msg['type'] == 'done':
+                orders_to_close.append(msg_to_order_dict(order_msg))
+            elif order_msg['type'] == 'change':
+                base_order = msg_to_order_dict(order_msg)
+                orders_to_close.append({
+                    **base_order,
+                    'ending_at': order_msg['time']})
+
+                new_orders.append({
+                    **base_order,
+                    'starting_at': order_msg['time'],
+                    'amount': order_msg['new_size']})
+            elif order_msg['type'] == 'open':
+                new_orders.append(msg_to_order_dict(order_msg))
+        return new_orders, orders_to_close
+
+    def store_messages(self):
+        order_msgs, trade_msgs = self._split_orders_trades()
+        new_states, states_to_close = self._split_orders(order_msgs)
+        if trade_msgs:
+            (Trade
+                .insert_many([msg_to_trade_dict(msg) for msg in trade_msgs])
+                .execute())
+        # Insert new states
+        if new_states:
+            (OrderState
+                .insert_many(new_states)
+                .execute())
+        # Close older states with a single query
+        if states_to_close:
+            case_on_id = Case(OrderState.order_id,
+                            [(state['order_id'], datetime.strptime(state['ending_at'], OrderState.ending_at.formats[0])) for state in states_to_close])
+            (OrderState
+                .update(ending_at=case_on_id)
+                .where((OrderState.order_id.in_([state['order_id'] for state in states_to_close]) &
+                        (OrderState.ending_at.is_null())))
+                .execute())
 
 
 def msg_to_order_dict(msg):
-    return {
-        'id': msg['order_id'],
-        'side': 'ask' if msg['side'] == 'sell' else 'bid',
-        'product': msg['product_id'],
-        'price': msg.get('price'),
-        'close_time': msg['time'] if msg['type'] == 'done' else None
-    }
+    def find_amount(msg):
+        if msg.get('remaining_size'):
+            return msg['remaining_size']
+        if msg.get('new_size'):
+            return msg['new_size']
+        return 0
 
-
-def msg_to_history_dict(msg):
+    print(msg)
     return {
-        'amount': msg['remaining_size'],
-        'time': msg['time'],
-        'order': msg['order_id']
+        'order_id':     msg['order_id'],
+        'side':         'ask' if msg['side'] == 'sell' else 'bid',
+        'product':      msg['product_id'],
+                        # Returns None if price is unknown (e.g. if msg type is
+                        # 'done')
+        'price':        msg.get('price'),
+        'amount':       find_amount(msg),
+        'starting_at':  msg['time'] if msg['type'] == 'open' else None,
+        'ending_at':    msg['time'] if msg['type'] == 'done' else None
     }
 
 
