@@ -1,21 +1,24 @@
 import sys
 
 import appdirs
+
 import service
-from pykamino._cli.shared_utils import init_db
 from pykamino._cli.config import config as cfg
+from pykamino._cli.shared_utils import init_db
 from pykamino.db import Dbms, db_factory
 from pykamino.scraper.websocket import Client
 
 
 class Service(service.Service):
     """
-    A background process that downloads data, parse it, and store it in a database.
+    A background process that downloads data, parse it, and store it in a
+    database.
     """
 
     def __init__(self, *args, **kwargs):
         super().__init__('cbpro_service',
-                         pid_dir=appdirs.user_cache_dir('pykamino'), *args, **kwargs)
+                         pid_dir=appdirs.user_cache_dir('pykamino'),
+                         *args, **kwargs)
         self.scraper = Client(None, products=cfg['global']['products'])
 
     def run(self):
