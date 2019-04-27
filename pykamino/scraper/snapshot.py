@@ -4,7 +4,6 @@ import cbpro
 from peewee import fn
 
 from pykamino.db import BaseModel, OrderState
-from pykamino.db import database
 
 cbpro_client = cbpro.PublicClient()
 

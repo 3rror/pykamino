@@ -5,7 +5,6 @@ import appdirs
 import service
 from pykamino._cli.config import config as cfg
 from pykamino._cli.shared_utils import init_db
-from pykamino.db import Dbms, db_factory
 from pykamino.scraper.websocket import Client
 
 
