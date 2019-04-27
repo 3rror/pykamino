@@ -194,7 +194,6 @@ def msg_to_order_dict(msg):
             return msg['new_size']
         return 0
 
-    print(msg)
     return {
         'order_id':     msg['order_id'],
         'side':         'ask' if msg['side'] == 'sell' else 'bid',
