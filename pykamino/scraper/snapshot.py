@@ -49,14 +49,18 @@ class Snapshot:
 
     def _close_old_orders(self):
         self.TempSnapshot.create_table()
-        self.TempSnapshot.insert_many(self, fields=['order_id', 'amount']).execute()
-        still_open = (self.TempSnapshot
-                        .select()
-                        .where((self.TempSnapshot.order_id == OrderState.order_id) &
-                               (OrderState.ending_at.is_null()) &
-                               (self.TempSnapshot.amount == OrderState.amount)))
-        OrderState.update(ending_at=datetime.now()) \
-                  .where(~fn.EXISTS(still_open), OrderState.ending_at.is_null()).execute()
+        (self.TempSnapshot
+            .insert_many(self, fields=['order_id', 'amount'])
+            .execute())
+        condition = (
+            (self.TempSnapshot.order_id == OrderState.order_id) &
+            (OrderState.ending_at.is_null()) &
+            (self.TempSnapshot.amount == OrderState.amount))
+        states_open = self.TempSnapshot.select().where(condition)
+        (OrderState
+            .update(ending_at=datetime.now())
+            .where(~fn.EXISTS(states_open) & OrderState.ending_at.is_null())
+            .execute())
         # Remove the temporary table
         self.TempSnapshot.drop_table()
 
@@ -68,7 +72,9 @@ class Snapshot:
         anymore.
         """
         self._close_old_orders()
-        OrderState.insert_many(self, fields=['order_id', 'product', 'side', 'price', 'amount', 'starting_at']).execute()
+        fields_to_save = ['order_id', 'product',
+                          'side', 'price', 'amount', 'starting_at']
+        OrderState.insert_many(self, fields=fields_to_save).execute()
         if clear:
             self.clear()
 
