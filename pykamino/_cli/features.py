@@ -2,7 +2,6 @@ from pykamino._cli.config import config as cfg
 from pykamino._cli.shared_utils import init_db
 from pykamino.features import exporter, orders, trades
 from pykamino.features import TimeWindow
-from datetime import timedelta
 
 
 def compute(*args, **kwargs):
