@@ -58,7 +58,7 @@ class FeatureCalculator():
     @memoize
     def best_ask_order(self):
         """
-        Ask order with the minimimum price.
+        Ask order with the minimum price.
         If there are more orders with the same price, the one with the maximum
         amount is returned.
         """
