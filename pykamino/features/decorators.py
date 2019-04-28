@@ -17,11 +17,3 @@ def rounded(func=None, *, ndigits=8):
     if func:
         return decorate(func)
     return decorate
-
-
-def feature(func):
-    "Mark function or method as a feature we want to extract."
-    def tag_it(f):
-        f.is_feature = True
-        return f
-    return tag_it

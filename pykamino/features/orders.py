@@ -37,6 +37,9 @@ class FeatureCalculator():
             (orders.starting_at <= timestamp) &
             ((orders.ending_at > timestamp) | orders.ending_at.isnull()))
         open_orders = orders[condition]
+        # Some pandas functions, like groupby(), drop fields that are "Objects"
+        # (i.e. custom fields, Decimals...). Because of this, we pre-cast price
+        # and amount to floats.
         return open_orders.astype({'price': float, 'amount': float})
 
     @memoize
@@ -62,10 +65,11 @@ class FeatureCalculator():
         If there are more orders with the same price, the one with the maximum
         amount is returned.
         """
-        return (self
-                .asks()
-                .sort_values(["price", "amount"], ascending=[True, False])
-                .iloc[0])
+        return (
+            self
+            .asks()
+            .sort_values(["price", "amount"], ascending=[True, False])
+            .iloc[0])
 
     @memoize
     def best_bid_order(self):
@@ -74,10 +78,11 @@ class FeatureCalculator():
         If there are more orders with the same price, the one with the minimum
         amount is returned.
         """
-        return (self
-                .bids()
-                .sort_values(["price", "amount"], ascending=[True, False])
-                .iloc[-1])
+        return (
+            self
+            .bids()
+            .sort_values(["price", "amount"], ascending=[True, False])
+            .iloc[-1])
 
     def best_ask_price(self):
         """Minimum price among ask orders."""
@@ -135,22 +140,24 @@ class FeatureCalculator():
 
     @memoize
     def ask_depth_chart(self):
-        return (self
-                .asks()
-                .groupby("price")
-                .sum().amount
-                .cumsum().reset_index())
+        return (
+            self
+            .asks()
+            .groupby("price")
+            .sum().amount
+            .cumsum().reset_index())
 
     @memoize
     def bid_depth_chart(self):
-        return (self
-                .bids()
-                .groupby("price")
-                .sum().amount
-                .iloc[::-1]
-                .cumsum()
-                .iloc[::-1]
-                .reset_index())
+        return (
+            self
+            .bids()
+            .groupby("price")
+            .sum().amount
+            .iloc[::-1]
+            .cumsum()
+            .iloc[::-1]
+            .reset_index())
 
     def ask_depth_chart_bins(self, bins=10):
         ask_part = self.ask_depth_chart()
@@ -231,13 +238,17 @@ class FeatureCalculator():
 
 
 def fetch_orders(interval, product='BTC-USD'):
-    orders = (OrderState
-              .select(
-                  OrderState.side, OrderState.price, OrderState.amount, OrderState.starting_at, OrderState.ending_at)
-              .where(
-                    (OrderState.product == product) & (OrderState.starting_at <= interval.end) &
-                    ((OrderState.ending_at > interval.start) | (OrderState.ending_at.is_null())))
-              .namedtuples())
+    orders = (
+        OrderState
+        .select(
+            OrderState.side, OrderState.price, OrderState.amount,
+            OrderState.starting_at, OrderState.ending_at)
+        .where(
+            (OrderState.product == product) &
+            (OrderState.starting_at <= interval.end) &
+            ((OrderState.ending_at > interval.start) |
+             (OrderState.ending_at.is_null())))
+        .namedtuples())
     return pd.DataFrame(orders)
 
 
@@ -246,8 +257,9 @@ def extract(interval: TimeWindow, res='2min', products=('BTC-USD')):
     res = pd.to_timedelta(res)
     with multiprocessing.Pool() as pool:
         for product in products:
-            output = pool.imap(_extract,
-                               sliding_time_windows(interval, res, stride=100, chunksize=50))
+            windows = sliding_time_windows(interval, res, stride=100,
+                                           chunksize=50)
+            output = pool.imap(_extract, windows)
             features[product] = list(itertools.chain(*output))
     # TODO: Support multiple currencies. For now we consider only BTC
     return features['BTC-USD']
@@ -259,6 +271,7 @@ def _extract(intervals):
     instants = [i.start for i in intervals]
     instants.append(intervals[-1].end)
     return [features_from_subset(orders, i) for i in instants]
+
 
 def features_from_subset(orders, instant):
     if len(orders) == 0:

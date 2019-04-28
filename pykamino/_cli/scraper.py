@@ -31,7 +31,7 @@ class Service(service.Service):
 service = Service()
 
 
-### CLI commands ###
+# CLI commands #
 def run(*args, **kwargs):
     if service.is_running():
         print('The service is already running', file=sys.stderr)

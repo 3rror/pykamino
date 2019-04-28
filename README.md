@@ -1,7 +1,7 @@
 # Pykamino
 
 Pykamino is a all-in-one tool to both retrieve data and extract useful __features__ from CoinBasePro API. These __features__ can then be used to train a neural network to predict crypto's market movements.\
-Data is downloaded in realtime from the [Coinbase Pro](https://pro.coinbase.com/) exchange platform.
+Data is downloaded in real time from the [Coinbase Pro](https://pro.coinbase.com/) exchange platform.
 
 ## Installation
 

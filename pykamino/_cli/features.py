@@ -1,7 +1,6 @@
 from pykamino._cli.config import config as cfg
 from pykamino._cli.shared_utils import init_db
-from pykamino.features import exporter, orders, trades
-from pykamino.features import TimeWindow
+from pykamino.features import TimeWindow, exporter, orders, trades
 
 
 def compute(*args, **kwargs):

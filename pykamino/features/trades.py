@@ -7,8 +7,8 @@ from pykamino.db import Trade
 from pykamino.features import TimeWindow, sliding_time_windows
 from pykamino.features.decorators import rounded
 
-# Feature calcutation #
 
+# Feature calculation #
 
 def _buys(trades):
     """Return trades of type "buy" in the specified dataframe.
