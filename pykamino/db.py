@@ -4,9 +4,8 @@ from functools import partial
 from math import ceil
 from os import cpu_count
 
-from peewee import (SQL, BigIntegerField, CharField, DateTimeField,
-                    DecimalField, ForeignKeyField, Model, Proxy, UUIDField,
-                    CompositeKey)
+from peewee import (CharField, CompositeKey, DateTimeField, DecimalField,
+                    Model, Proxy, UUIDField)
 from playhouse.pool import (PooledMySQLDatabase, PooledPostgresqlDatabase,
                             PooledSqliteDatabase)
 
@@ -51,7 +50,8 @@ def db_factory(dbms: Dbms, db_name, user=None, psw=None, host=None, port=None):
 
 CurrencyField = partial(DecimalField, max_digits=18, decimal_places=8)
 Iso8601DateTimeField = partial(DateTimeField,
-                               formats=['%Y-%m-%dT%H:%M:%S.%fZ', '%Y-%m-%dT%H:%M:%S.%f',
+                               formats=['%Y-%m-%dT%H:%M:%S.%fZ',
+                                        '%Y-%m-%dT%H:%M:%S.%f',
                                         # This one is for SQLite
                                         '%Y-%m-%d %H:%M:%f'])
 
