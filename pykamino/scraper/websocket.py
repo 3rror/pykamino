@@ -1,14 +1,12 @@
+from datetime import datetime
 from queue import Queue
 from threading import Condition, Event, Thread
 
 from cbpro import WebsocketClient
-
 from peewee import Case
-from pykamino.db import OrderState
-from pykamino.db import Trade
-from pykamino.scraper.snapshot import Snapshot
 
-from datetime import datetime
+from pykamino.db import OrderState, Trade
+from pykamino.scraper.snapshot import Snapshot
 
 
 class Client():
