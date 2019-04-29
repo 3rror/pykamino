@@ -2,7 +2,6 @@ import itertools
 import multiprocessing
 from statistics import mean
 
-import numpy as np
 import pandas as pd
 
 from pykamino.db import OrderState
@@ -162,22 +161,14 @@ class FeatureCalculator():
 
     def ask_depth_chart_bins(self, bins=10):
         ask_part = self.ask_depth_chart()
-        ask_part = ask_part[ask_part.price <
-                            1.99 * float(self.mid_market_price())]
-        ask_bins = ask_part.groupby(
-            pd.cut(
-                ask_part.price,
-                np.linspace(ask_part.price.min(), ask_part.price.max(), bins)))
+        ask_part = ask_part[ask_part.price < 1.99 * self.mid_market_price()]
+        ask_bins = ask_part.groupby(pd.cut(ask_part.price, bins))
         return ask_bins.mean().itertuples(index=False)
 
     def bid_depth_chart_bins(self, bins=10):
         bid_part = self.bid_depth_chart()
-        bid_part = bid_part[bid_part.price >
-                            0.01 * float(self.mid_market_price())]
-        bid_bins = bid_part.groupby(
-            pd.cut(
-                bid_part.price,
-                np.linspace(bid_part.price.min(), bid_part.price.max(), bins)))
+        bid_part = bid_part[bid_part.price > 0.01 * self.mid_market_price()]
+        bid_bins = bid_part.groupby(pd.cut(bid_part.price, bins))
         return bid_bins.mean().itertuples(index=False)
 
     def _volume(self, orders):
