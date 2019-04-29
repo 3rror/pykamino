@@ -59,7 +59,7 @@ class Client():
         self._is_running = False
 
 
-### Threading stuff ###
+# Threading stuff #
 
 class GracefulThread(Thread):
     """
