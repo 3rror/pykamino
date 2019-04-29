@@ -10,7 +10,7 @@ from playhouse.pool import (PooledMySQLDatabase, PooledPostgresqlDatabase,
                             PooledSqliteDatabase)
 
 # We want the database to be dinamically defined, so that we can support
-# different DBMSs. In order to do that, we first declare a placeholder.
+# different Dbms's. In order to do that, we first declare a placeholder.
 database = Proxy()
 
 
