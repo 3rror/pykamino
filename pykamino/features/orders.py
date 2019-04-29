@@ -253,7 +253,7 @@ def fetch_orders(interval, product='BTC-USD'):
     return pd.DataFrame(orders)
 
 
-def extract(interval: TimeWindow, res='2min', products=('BTC-USD')):
+def extract(interval: TimeWindow, res='2min', products=('BTC-USD',)):
     features = {}
     res = pd.to_timedelta(res)
     with multiprocessing.Pool() as pool:
