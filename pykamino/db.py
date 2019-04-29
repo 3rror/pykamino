@@ -76,6 +76,7 @@ class Trade(BaseModel):
     time = Iso8601DateTimeField()
 
     class Meta:
+        # Note: the ending comma is required
         indexes = ((('product', 'time'), False),)
 
 
