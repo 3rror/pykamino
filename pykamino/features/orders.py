@@ -13,14 +13,16 @@ from pykamino.features.decorators import rounded
 def memoize(func):
     """
     Cache the output of the function. Very useful to speed up multiple calls of
-    computational intensive functions. Requires a dictionary instance variable
-    called _cache.
+    computational intensive functions.
+
+    Defines, if not present, an instance variable called _cache.
     """
-    def wrapper(*args):
-        # args[0] is "self"
-        if func not in args[0]._cache:
-            args[0]._cache[func] = func(*args)
-        return args[0]._cache[func]
+    def wrapper(self, *args, **kwargs):
+        if not hasattr(self, '_cache'):
+            self._cache = {}
+        if func not in self._cache:
+            self._cache[func] = func(self, *args, **kwargs)
+        return self._cache[func]
     return wrapper
 
 
@@ -28,7 +30,6 @@ class FeatureCalculator():
     def __init__(self, orders, timestamp):
         self._orders = self._open_orders_at_timestamp(orders, timestamp)
         self.timestamp = timestamp
-        self._cache = {}  # Used by memoize decorator
 
     def _open_orders_at_timestamp(self, orders, timestamp):
         if len(orders) == 0:
