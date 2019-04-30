@@ -41,12 +41,6 @@ class Snapshot:
         for book_order in self:
             yield OrderState({**book_order, 'starting_at': datetime.now()})
 
-    @staticmethod
-    def _add_order_field(book_order):
-        new_order = book_order.copy()
-        new_order['order'] = new_order['id']
-        return new_order
-
     def _close_old_orders(self):
         self.TempSnapshot.create_table()
         (self.TempSnapshot
