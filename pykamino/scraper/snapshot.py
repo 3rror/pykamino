@@ -27,13 +27,14 @@ class Snapshot:
         self.sequence = cbpro_snap['sequence']
         for side in ('bids', 'asks'):
             for order_msg in cbpro_snap[side]:
-                self._snap.append({'price': order_msg[0],
-                                   'amount': order_msg[1],
-                                   'order_id': order_msg[2],
-                                   'product': self.product,
-                                   # Remove the trailing 's' for plural nouns
-                                   # eg: asks -> ask
-                                   'side': side[:-1]})
+                self._snap.append(
+                    {'price': order_msg[0],
+                     'amount': order_msg[1],
+                     'order_id': order_msg[2],
+                     'product': self.product,
+                     # Remove the trailing 's' for plural nouns
+                     # For example: asks -> ask
+                     'side': side[:-1]})
         return self.sequence
 
     def insert(self, clear=True):
