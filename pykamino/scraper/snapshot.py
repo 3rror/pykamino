@@ -19,6 +19,9 @@ class Snapshot:
         self._snap = []
         self.sequence = -1
 
+    def __iter__(self):
+        return iter(self._snap)
+
     def download(self):
         cbpro_snap = cbpro_client.get_product_order_book(self.product, level=3)
         self.sequence = cbpro_snap['sequence']
@@ -32,6 +35,27 @@ class Snapshot:
                                    # eg: asks -> ask
                                    'side': side[:-1]})
         return self.sequence
+
+    def insert(self, clear=True):
+        """
+        Store the snapshot in the database.
+
+        This will also take care of closing orders that are not in the book
+        anymore.
+        """
+        self._close_old_orders()
+        fields_to_save = ['order_id', 'product',
+                          'side', 'price', 'amount', 'starting_at']
+        OrderState.insert_many(self, fields=fields_to_save).execute()
+        if clear:
+            self.clear()
+
+    def clear(self):
+        """
+        Get rid of the previously downloaded snapshot.
+        """
+        self.sequence = -1
+        self._snap.clear()
 
     def to_models(self):
         """
@@ -57,30 +81,6 @@ class Snapshot:
             .execute())
         # Remove the temporary table
         self.TempSnapshot.drop_table()
-
-    def insert(self, clear=True):
-        """
-        Store the snapshot in the database.
-
-        This will also take care of closing orders that are not in the book
-        anymore.
-        """
-        self._close_old_orders()
-        fields_to_save = ['order_id', 'product',
-                          'side', 'price', 'amount', 'starting_at']
-        OrderState.insert_many(self, fields=fields_to_save).execute()
-        if clear:
-            self.clear()
-
-    def clear(self):
-        """
-        Get rid of the previously downloaded snapshot.
-        """
-        self.sequence = -1
-        self._snap.clear()
-
-    def __iter__(self):
-        return iter(self._snap)
 
     class TempSnapshot(BaseModel):
         """
