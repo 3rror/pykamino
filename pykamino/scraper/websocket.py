@@ -10,7 +10,9 @@ from pykamino.scraper.snapshot import Snapshot
 
 
 class Client():
-    def __init__(self, buffer_len, products=('BTC-USD',)):
+    def __init__(self, buffer_len, products=None):
+        if products is None:
+            products = ['BTC-USD']
         self._seqs = {prod: -1 for prod in products}
         self._receiver = Receiver(products=products)
         self._filter = Filter(buffer_len, sequences=self._seqs)
