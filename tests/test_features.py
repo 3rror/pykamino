@@ -5,9 +5,10 @@ from datetime import timedelta as delta
 from decimal import Decimal
 
 from peewee import SqliteDatabase
-from pykamino.db import Dbms, Order, OrderHistory, Trade, db_factory
+from pykamino.db import OrderState, Trade
 from pykamino.features import orders, trades
 from pykamino.features import TimeWindow
+from pykamino.features.orders import FeatureCalculator
 
 
 class BaseTestCase(unittest.TestCase):
@@ -46,143 +47,122 @@ class OrderFeatures(BaseTestCase):
 
     @property
     def models(self):
-        return [Order, OrderHistory]
+        return [OrderState]
 
     def prepare_dataframes(self):
-        start = self.CLOSE_DT + delta(minutes=10)
-        end = self.CLOSE_DT + delta(minutes=20)
-        self.orders = orders.select_orders(start, end, ['BTC-USD'])
-        self.order_book = orders.order_book_from_cache(
-            self.orders,
-            self.UPDATE_DT + delta(minutes=10))
+        start = self.CLOSE_DT + delta(minutes=self.N_ORDERS/2)
+        end = self.CLOSE_DT + delta(minutes=self.N_ORDERS)
+        self.order_states = orders.fetch_states(
+            TimeWindow(start, end), 'BTC-USD')
 
     def populate_tables(self):
-        orders = []
-        hist = []
-        for i in range(0, self.N_ORDERS):
-            orders.append(
-                (self.uuid_builder(i),
-                 'bid' if i % 2 == 0 else 'ask',
-                 'BTC-USD',
-                 1500 + 500 * i,
-                 self.CLOSE_DT + delta(minutes=i) if i % 3 == 0 else None))
-            hist.append(
-                (i+1,
-                 Decimal('0.1') * (i+1),
-                 self.START_DT + delta(minutes=i),
-                 self.uuid_builder(i)))
-        Order.insert_many(orders, fields=Order._meta.fields).execute()
-        OrderHistory.insert_many(hist, OrderHistory._meta.fields).execute()
-        OrderHistory.insert(
-            {'id': 100,
-             'amount': 100,
-             'time': self.UPDATE_DT,
-             'order_id': self.uuid_builder(9)}).execute()
-        OrderHistory.insert(
-            {'id': 200,
-             'amount': 100,
-             'time': self.UPDATE_DT,
-             'order_id': self.uuid_builder(11)}).execute()
+        order_states = []
+        for i in range(self.N_ORDERS):
+            # Add orders states with the following rules:
+            # • Bid and ask orders are alternate
+            # • If i is divisible by 3, then it's closed
+            order_states.append({
+                'order_id': self.uuid_builder(i),
+                'product': 'BTC-USD',
+                'side': 'bid' if i % 2 == 0 else 'ask',
+                'price': 1500 + 500 * i,
+                'amount': Decimal('0.1') * (i+1),
+                'starting_at': self.START_DT + delta(minutes=i),
+                # We want 1 order closed, then 2 left open, and so on
+                'ending_at': self.CLOSE_DT + delta(minutes=i) if i % 3 == 0 else None
+            })
+        order_states[9]['ending_at'] = self.UPDATE_DT
+        order_states.append({
+            **order_states[9],
+            'amount': 100,
+            'starting_at': self.UPDATE_DT,
+            'ending_at': self.CLOSE_DT + delta(minutes=9)
+        })
+
+        order_states[11]['ending_at'] = self.UPDATE_DT
+        order_states.append({
+            **order_states[11],
+            'amount': 100,
+            'starting_at': self.UPDATE_DT,
+            'ending_at': None
+        })
+
+        OrderState.insert_many(order_states).execute()
 
     def setUp(self):
         super().setUp()
         self.prepare_dataframes()
+        self.fc = FeatureCalculator(
+            self.order_states,
+            self.UPDATE_DT + delta(minutes=10))
 
     def test_database_query(self):
-        self.assertEqual(len(self.orders), 17)
-
-    def test_book_from_cache(self):
-        with self.subTest():
-            self.assertEqual(len(self.order_book), 16)
-            df = self.order_book
-            row = df[df.id.astype(str) == self.uuid_builder(11)]
-            self.assertEqual(row.amount.iloc[0], 100)
+        self.assertEqual(len(self.order_states), 16)
 
     def test_best_ask_price(self):
-        self.assertEqual(
-            orders.best_ask_price(self.order_book), 2000)
+        self.assertEqual(self.fc.best_ask_price(), 2000)
 
     def test_best_bid_price(self):
-        self.assertEqual(
-            orders.best_bid_price(self.order_book), 10500)
+        self.assertEqual(self.fc.best_bid_price(), 10500)
 
     def test_best_ask_amount(self):
-        Order.insert(
-            {'id': self.uuid_builder(900),
-             'side': 'ask',
-             'product': 'BTC-USD',
-             'price': 2000,
-             'close_time': None}).execute()
-        OrderHistory.insert(
-            {'id': 900,
-             'amount': 1,
-             'time': self.START_DT,
-             'order_id': self.uuid_builder(900)}).execute()
+        OrderState.insert({
+            'order_id': self.uuid_builder(900),
+            'side': 'ask',
+            'product': 'BTC-USD',
+            'price': 2000,
+            'amount': 1,
+            'starting_at': self.START_DT
+        }).execute()
         self.prepare_dataframes()
-        self.assertEqual(
-            orders.best_ask_amount(self.order_book), Decimal('1.2'))
+        fc = FeatureCalculator(
+            self.order_states,
+            self.UPDATE_DT + delta(minutes=10))
+        self.assertEqual(fc.best_ask_amount(), 1.2)
 
     def test_best_bid_amount(self):
-        Order.insert(
-            {'id': self.uuid_builder(900),
-             'side': 'bid',
-             'product': 'BTC-USD',
-             'price': 10500,
-             'close_time': None}).execute()
-        OrderHistory.insert(
-            {'id': 900,
-             'amount': 1,
-             'time': self.START_DT,
-             'order_id': self.uuid_builder(900)}).execute()
+        OrderState.insert({
+            'order_id': self.uuid_builder(900),
+            'side': 'bid',
+            'product': 'BTC-USD',
+            'price': 10500,
+            'amount': 1,
+            'starting_at': self.START_DT
+        }).execute()
         self.prepare_dataframes()
-        self.assertEqual(
-            orders.best_bid_amount(self.order_book), Decimal('2.9'))
+        fc = FeatureCalculator(
+            self.order_states,
+            self.UPDATE_DT + delta(minutes=10))
+        self.assertEqual(fc.best_bid_amount(), 2.9)
 
     def test_mid_market_price(self):
-        self.assertEqual(orders.mid_market_price(self.order_book), 6250)
+        self.assertEqual(self.fc.mid_market_price(), 6250)
 
-    def test_spread(self):
-        self.assertEqual(orders.spread(self.order_book), 8500)
+    def test_bid_ask_spread(self):
+        self.assertEqual(self.fc.bid_ask_spread(), 8500)
 
     def test_ask_depth(self):
-        self.assertEqual(orders.ask_depth(self.order_book), 8)
+        self.assertEqual(self.fc.ask_depth(), 8)
 
     def test_bid_depth(self):
-        self.assertEqual(orders.bid_depth(self.order_book), 8)
-
-    def test_ask_depth_chart(self):
-        chart = orders.ask_depth_chart(self.order_book)
-        with self.subTest():
-            self.assertEqual(chart.amount.iloc[0], Decimal('0.2'))
-            self.assertEqual(chart.amount.iloc[-1], Decimal('108.4'))
-
-    def test_bid_depth_chart(self):
-        chart = orders.bid_depth_chart(self.order_book)
-        first_row = chart.iloc[0]
-        last_row = chart.iloc[-1]
-        with self.subTest():
-            self.assertEqual(first_row.amount, Decimal('9.2'))
-            self.assertEqual(first_row.price, Decimal(2500))
-            self.assertEqual(last_row.amount, Decimal('1.9'))
-            self.assertEqual(last_row.price, Decimal(10500))
+        self.assertEqual(self.fc.bid_depth(), 8)
 
     def test_ask_volume_weighted(self):
-        self.assertAlmostEqual(orders.ask_volume_weighted(
-            self.order_book), Decimal('0.13466247'), delta=1e-8)
+        self.assertAlmostEqual(self.fc.ask_volume_weighted(), 0.13466247, delta=1e-8)
 
     def test_bid_volume_weighted(self):
-        self.assertAlmostEqual(orders.bid_volume_weighted(
-            self.order_book), Decimal('-0.00561498'), delta=1e-8)
+        self.assertAlmostEqual(self.fc.bid_volume_weighted(), -0.00561498, delta=1e-8)
 
     def test_ask_volume(self):
-        self.assertEqual(orders.ask_volume(self.order_book), Decimal('108.4'))
+        self.assertEqual(self.fc.ask_volume(), 108.4)
 
     def test_bid_volume(self):
-        self.assertEqual(orders.bid_volume(self.order_book), Decimal('9.2'))
+        self.assertEqual(self.fc.bid_volume(), 9.2)
 
 
 class TradeFeatures(BaseTestCase):
     START_DT = datetime(2010, 1, 30, 11, 00)
+    N_TRADES = 20
 
     @property
     def models(self):
@@ -190,15 +170,15 @@ class TradeFeatures(BaseTestCase):
 
     def populate_tables(self):
         data = []
-        for i in range(0, 20):
-            data.append(
-                (i + 1,
-                 'sell' if i < 10 else 'buy',
-                 Decimal('0.1') * (i+1),
-                 'BTC-USD',
-                 1500 + 500 * i,
-                 self.START_DT + delta(minutes=10 * i)))
-        Trade.insert_many(data, fields=Trade._meta.fields).execute()
+        for i in range(self.N_TRADES):
+            data.append({
+                'id': i + 1,
+                'side': 'sell' if i < 10 else 'buy',
+                'amount': 0.1 * (i+1),
+                'product': 'BTC-USD',
+                'price': 1500 + 500 * i,
+                'time': self.START_DT + delta(minutes=10 * i)})
+        Trade.insert_many(data).execute()
 
     def setUp(self):
         super().setUp()

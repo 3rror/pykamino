@@ -32,6 +32,7 @@ class Snapshot:
                      'amount': order_msg[1],
                      'order_id': order_msg[2],
                      'product': self.product,
+                     'starting_at': datetime.now(),
                      # Remove the trailing 's' for plural nouns
                      # For example: asks -> ask
                      'side': side[:-1]})

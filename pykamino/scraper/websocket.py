@@ -92,8 +92,8 @@ filt_msgs_lock = Condition()
 
 
 class Receiver(WebsocketClient):
-    def __init__(self, **kwargs):
-        super().__init__(channels=['full'], **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(channels=['full'], *args, **kwargs)
 
     def on_open(self):
         pass

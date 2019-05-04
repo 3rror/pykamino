@@ -119,7 +119,7 @@ class FeatureCalculator():
         return mean([self.best_bid_price(), self.best_ask_price()])
 
     @rounded
-    def spread(self):
+    def bid_ask_spread(self):
         """
         Difference between the highest price that a buyer is willing to pay
         (bid) and the lowest price that a seller is willing to accept (ask).
@@ -139,19 +139,24 @@ class FeatureCalculator():
         return len(self.bids())
 
     @memoize
-    def ask_depth_chart(self):
+    def chart(self):
+        chart = pd.concat([self._bids_chart(), self._asks_chart()])
+        no_outliners_filter = (
+            (chart.price < 1.99 * self.mid_market_price()) &
+            (chart.price > 0.01 * self.mid_market_price()))
+        return chart[no_outliners_filter]
+
+    def sampled_chart(self, bins=30):
         return (
-            self
-            .asks()
-            .groupby("price")
-            .sum().amount
-            .cumsum().reset_index())
+            self.chart()
+            .groupby(pd.cut(self.chart().price, bins), sort=False)
+            .mean().amount
+            .tolist())
 
     @memoize
-    def bid_depth_chart(self):
+    def _bids_chart(self):
         return (
-            self
-            .bids()
+            self.bids()
             .groupby("price")
             .sum().amount
             .iloc[::-1]
@@ -159,17 +164,13 @@ class FeatureCalculator():
             .iloc[::-1]
             .reset_index())
 
-    def ask_depth_chart_bins(self, bins=10):
-        ask_part = self.ask_depth_chart()
-        ask_part = ask_part[ask_part.price < 1.99 * self.mid_market_price()]
-        ask_bins = ask_part.groupby(pd.cut(ask_part.price, bins))
-        return ask_bins.mean().itertuples(index=False)
-
-    def bid_depth_chart_bins(self, bins=10):
-        bid_part = self.bid_depth_chart()
-        bid_part = bid_part[bid_part.price > 0.01 * self.mid_market_price()]
-        bid_bins = bid_part.groupby(pd.cut(bid_part.price, bins))
-        return bid_bins.mean().itertuples(index=False)
+    @memoize
+    def _asks_chart(self):
+        return (
+            self.asks()
+            .groupby("price")
+            .sum().amount
+            .cumsum().reset_index())
 
     def _volume(self, orders):
         return orders.amount.sum()
@@ -194,42 +195,18 @@ class FeatureCalculator():
 
     def compute_all(self):
         """Dictionary of all the features in this order book"""
-
-        def _ask_depth_chart_bins(count):
-            bins = {}
-            depth_chart = self.ask_depth_chart_bins(count+1)
-            for index, point in enumerate(depth_chart):
-                bins[f"ask_depth_chart_bin{index}"] = point.amount
-                bins[f"ask_depth_chart_bin_price{index}"] = point.price
-            return bins
-
-        def _bid_depth_chart_bins(count):
-            bins = {}
-            depth_chart = self.bid_depth_chart_bins(count+1)
-            for index, point in enumerate(depth_chart):
-                bins[f"bid_depth_chart_bin{index}"] = point.amount
-                bins[f"bid_depth_chart_bin_price{index}"] = point.price
-            return bins
-
-        return {
-            "mid_market_price": self.mid_market_price(),
-            "best_ask_price": self.best_ask_price(),
-            "best_bid_price": self.best_bid_price(),
-            "best_ask_amount": self.best_ask_amount(),
-            "best_bid_amount": self.best_bid_amount(),
-            "market_spread": self.spread(),
-            "ask_depth": self.ask_depth(),
-            "bid_depth": self.bid_depth(),
-            "ask_volume": self.ask_volume(),
-            "bid_volume": self.bid_volume(),
-            "ask_volume_weighted": self.ask_volume_weighted(),
-            "bid_volume_weighted": self.bid_volume_weighted(),
-            **_ask_depth_chart_bins(10),
-            **_bid_depth_chart_bins(10),
-        }
+        all_features = ["mid_market_price", "best_ask_price", "best_bid_price",
+                        "best_ask_amount", "best_bid_amount",
+                        "bid_ask_spread", "ask_depth", "bid_depth",
+                        "ask_volume", "bid_volume", "ask_volume_weighted",
+                        "bid_volume_weighted", "sampled_chart"]
+        output = {}
+        for feature_name in all_features:
+            output[feature_name] = getattr(self, feature_name)()
+        return output
 
 
-def fetch_orders(interval, product='BTC-USD'):
+def fetch_states(interval, product='BTC-USD'):
     orders = (
         OrderState
         .select(
@@ -259,7 +236,7 @@ def extract(interval: TimeWindow, res='2min', products=('BTC-USD',)):
 
 def _extract(intervals):
     range = TimeWindow(intervals[0].start, intervals[-1].end)
-    orders = fetch_orders(range)
+    orders = fetch_states(range)
     instants = [i.start for i in intervals]
     instants.append(intervals[-1].end)
     return [features_from_subset(orders, i) for i in instants]
