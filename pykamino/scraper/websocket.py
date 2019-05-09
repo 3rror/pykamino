@@ -101,6 +101,12 @@ class Receiver(WebsocketClient):
     def on_message(self, msg):
         msg_queue.put(msg)
 
+    def on_error(self, e, data=None):
+        # Ignore the fact that we didn't receive anything (None)
+        # But close the ws on other errors
+        if type(e) is not ValueError:
+            super().on_error(e, data)
+
 
 class Filter(GracefulThread):
     def __init__(self, buffer_len, sequences=None):
