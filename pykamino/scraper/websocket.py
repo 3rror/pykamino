@@ -6,7 +6,7 @@ from cbpro import WebsocketClient
 from peewee import Case
 
 from pykamino.db import OrderState, Trade
-from pykamino.scraper.snapshot import Snapshot
+from pykamino.scraper.snapshot import store_snapshot
 
 
 class Client():
@@ -31,12 +31,6 @@ class Client():
     def buffer_length(self, value):
         self._filter.buffer_len = value
 
-    def save_snapshot(self, product):
-        snap = Snapshot(product)
-        seq = snap.download()
-        snap.insert()
-        return seq
-
     @property
     def is_running(self):
         return self._is_running
@@ -48,7 +42,7 @@ class Client():
             for p in self.products:
                 # _seqs is a mutable object so it's been passed by reference.
                 # We don't need to pass it again to _filter
-                self._seqs[p] = self.save_snapshot(p)
+                self._seqs[p] = store_snapshot(p)
             self._filter.start()
             self._storer.start()
         else:
@@ -184,7 +178,7 @@ class MessageStorer(GracefulThread):
         # Close older states with a single query
         if states_to_close:
             case_on_id = Case(OrderState.order_id,
-                            [(state['order_id'], datetime.strptime(state['ending_at'], OrderState.ending_at.formats[0])) for state in states_to_close])
+                              [(state['order_id'], datetime.strptime(state['ending_at'], OrderState.ending_at.formats[0])) for state in states_to_close])
             (OrderState
                 .update(ending_at=case_on_id)
                 .where((OrderState.order_id.in_([state['order_id'] for state in states_to_close]) &
