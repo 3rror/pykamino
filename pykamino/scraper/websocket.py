@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime as dt
 from queue import Queue
 from threading import Condition, Event, Thread
 
@@ -10,12 +10,12 @@ from pykamino.scraper.snapshot import store_snapshot
 
 
 class Client():
-    def __init__(self, buffer_len, products=None):
+    def __init__(self, buffer_len=200, products=None):
         if products is None:
             products = ['BTC-USD']
         self._seqs = {prod: -1 for prod in products}
-        self._receiver = Receiver(products=products)
-        self._filter = Filter(buffer_len, sequences=self._seqs)
+        self._receiver = MessageReceiver(products=products)
+        self._filter = MessageParser(buffer_len, sequences=self._seqs)
         self._storer = MessageStorer()
         self._is_running = False
 
@@ -81,11 +81,15 @@ class GracefulThread(Thread):
 
 
 msg_queue = Queue()
-filtered_msgs = []
 filt_msgs_lock = Condition()
+parsed_msgs = {
+    'new_trades': [],
+    'new_states': [],
+    'closed_states': []
+}
 
 
-class Receiver(WebsocketClient):
+class MessageReceiver(WebsocketClient):
     def __init__(self, *args, **kwargs):
         super().__init__(channels=['full'], *args, **kwargs)
 
@@ -102,7 +106,7 @@ class Receiver(WebsocketClient):
             super().on_error(e, data)
 
 
-class Filter(GracefulThread):
+class MessageParser(GracefulThread):
     def __init__(self, buffer_len, sequences=None):
         super().__init__()
         self.sequences = sequences
@@ -113,15 +117,127 @@ class Filter(GracefulThread):
         msg_queue.task_done()
         try:
             if msg['sequence'] > self.sequences[msg['product_id']]:
-                self.append_filtered(msg)
+                with filt_msgs_lock:
+                    self._parse_and_save_message(msg)
+                    msg_count = sum([len(msg) for msg in parsed_msgs.values()])
+                    if msg_count >= self.buffer_len:
+                        filt_msgs_lock.notify_all()
         except KeyError:
             pass
 
-    def append_filtered(self, msg):
-        with filt_msgs_lock:
-            filtered_msgs.append(msg)
-            if len(filtered_msgs) >= self.buffer_len:
-                filt_msgs_lock.notify_all()
+    def _parse_and_save_message(self, msg):
+        # All possibile message types are:
+        # activate, received, match, open, change, done
+
+        if msg['type'] == 'activate' or msg['type'] == 'received':
+            # We skip them because they don't change the orderbook
+            return
+        elif msg['type'] == 'match':
+            self._append_trade_message(msg)
+        elif msg['type'] == 'open':
+            self._append_open_order_message(msg)
+        elif msg['type'] == 'change':
+            self._append_changed_order_message(msg)
+        elif msg['type'] == 'done':
+            self._append_close_order_message(msg)
+
+    def _append_trade_message(self, msg):
+        # Match message example:
+        # {
+        #     "type": "match",
+        #     "trade_id": 10,
+        #     "sequence": 50,
+        #     "maker_order_id": "ac928c66-ca53-498f-9c13-a110027a60e8",
+        #     "taker_order_id": "132fb6ae-456b-4654-b4e0-d681ac05cea1",
+        #     "time": "2014-11-07T08:19:27.028459Z",
+        #     "product_id": "BTC-USD",
+        #     "size": "5.23512",
+        #     "price": "400.23",
+        #     "side": "sell"
+        # }
+        parsed_msgs['new_trades'].append({
+            'side': msg['side'],
+            'amount': msg['size'],
+            'product': msg['product_id'],
+            'price': msg['price'],
+            'time': msg['time']
+        })
+
+    def _append_open_order_message(self, msg):
+        # Open message example
+        # {
+        #     "type": "open",
+        #     "time": "2014-11-07T08:19:27.028459Z",
+        #     "product_id": "BTC-USD",
+        #     "sequence": 10,
+        #     "order_id": "d50ec984-77a8-460a-b958-66f114b0de9b",
+        #     "price": "200.2",
+        #     "remaining_size": "1.00",
+        #     "side": "sell"
+        # }
+        parsed_msgs['new_states'].append({
+            'order_id': msg['order_id'],
+            'product': msg['product_id'],
+            'side': msg['side'],
+            'price': msg['price'],
+            'amount': msg['remaining_size'],
+            'starting_at': msg['time']
+        })
+
+    def _append_changed_order_message(self, msg):
+        # Change order message example:
+        # {
+        #     "type": "change",
+        #     "time": "2014-11-07T08:19:27.028459Z",
+        #     "sequence": 80,
+        #     "order_id": "ac928c66-ca53-498f-9c13-a110027a60e8",
+        #     "product_id": "BTC-USD",
+        #     "new_size": "5.23512",
+        #     "old_size": "12.234412",
+        #     "price": "400.23",
+        #     "side": "sell"
+        # }
+        if 'new_funds' in msg:
+            # We have a market order, skip it
+            return
+
+        parsed_msgs['closed_states'].append({
+            'order_id': msg['order_id'],
+            'ending_at': msg['time']
+        })
+
+        parsed_msgs['new_states'].append({
+            'order_id': msg['order_id'],
+            'product': msg['product_id'],
+            'side': msg['side'],
+            'price': msg['price'],
+            'amount': msg['new_size'],
+            'starting_at': msg['time']
+        })
+
+    def _append_close_order_message(self, msg):
+        # Done message example
+        # {
+        #     "type": "done",
+        #     "time": "2014-11-07T08:19:27.028459Z",
+        #     "product_id": "BTC-USD",
+        #     "sequence": 10,
+        #     "price": "200.2",
+        #     "order_id": "d50ec984-77a8-460a-b958-66f114b0de9b",
+        #     "reason": "filled", // or "canceled"
+        #     "side": "sell",
+        #     "remaining_size": "0"
+        # }
+
+        # Market orders will not have a remaining_size or price field as they
+        # are never on the open order book at a given price.
+        if 'remaining_size' not in msg or 'price' not in msg:
+            # We have a market order, skip it
+            return
+        parsed_msgs['closed_states'].append({
+            'order_id': msg['order_id'],
+            'ending_at': msg['time']
+        })
 
 
 class MessageStorer(GracefulThread):
@@ -129,89 +245,43 @@ class MessageStorer(GracefulThread):
         with filt_msgs_lock:
             filt_msgs_lock.wait()
             self.store_messages()
-            filtered_msgs.clear()
+            self._clean_parsed_msgs()
 
-    def _split_orders_trades(self):
-        order_msgs = []
-        trade_msgs = []
-
-        for msg in filtered_msgs:
-            if msg['type'] == 'match':
-                trade_msgs.append(msg)
-                continue
-            if msg['type'] not in ('activate', 'received'):
-                order_msgs.append(msg)
-        return order_msgs, trade_msgs
-
-    def _split_orders(self, order_msgs):
-        orders_to_close = []
-        new_orders = []
-        for order_msg in order_msgs:
-            if order_msg['type'] == 'done':
-                orders_to_close.append(msg_to_order_dict(order_msg))
-            elif order_msg['type'] == 'change':
-                base_order = msg_to_order_dict(order_msg)
-                orders_to_close.append({
-                    **base_order,
-                    'ending_at': order_msg['time']})
-
-                new_orders.append({
-                    **base_order,
-                    'starting_at': order_msg['time'],
-                    'amount': order_msg['new_size']})
-            elif order_msg['type'] == 'open':
-                new_orders.append(msg_to_order_dict(order_msg))
-        return new_orders, orders_to_close
+    def _clean_parsed_msgs(self):
+        for key in parsed_msgs:
+            parsed_msgs[key] = []
 
     def store_messages(self):
-        order_msgs, trade_msgs = self._split_orders_trades()
-        new_states, states_to_close = self._split_orders(order_msgs)
-        if trade_msgs:
-            (Trade
-                .insert_many([msg_to_trade_dict(msg) for msg in trade_msgs])
-                .execute())
-        # Insert new states
-        if new_states:
-            (OrderState
-                .insert_many(new_states)
-                .execute())
-        # Close older states with a single query
-        if states_to_close:
-            case_on_id = Case(OrderState.order_id,
-                              [(state['order_id'], datetime.strptime(state['ending_at'], OrderState.ending_at.formats[0])) for state in states_to_close])
-            (OrderState
-                .update(ending_at=case_on_id)
-                .where((OrderState.order_id.in_([state['order_id'] for state in states_to_close]) &
-                        (OrderState.ending_at.is_null())))
-                .execute())
+        if parsed_msgs['new_trades']:
+            self._add_new_trades()
+        if parsed_msgs['closed_states']:
+            self._close_old_states()
+        if parsed_msgs['new_states']:
+            self._add_new_states()
 
+    def _add_new_trades(self):
+        (Trade
+            .insert_many(parsed_msgs['new_trades'])
+            .execute())
 
-def msg_to_order_dict(msg):
-    def find_amount(msg):
-        if msg.get('remaining_size'):
-            return msg['remaining_size']
-        if msg.get('new_size'):
-            return msg['new_size']
-        return 0
+    def _close_old_states(self):
+        def formatted_time(ending_at):
+            return dt.strptime(ending_at, OrderState.ending_at.formats[0])
 
-    return {
-        'order_id':     msg['order_id'],
-        'side':         'ask' if msg['side'] == 'sell' else 'bid',
-        'product':      msg['product_id'],
-                        # Returns None if price is unknown (e.g. if msg type is
-                        # 'done')
-        'price':        msg.get('price'),
-        'amount':       find_amount(msg),
-        'starting_at':  msg['time'] if msg['type'] == 'open' else None,
-        'ending_at':    msg['time'] if msg['type'] == 'done' else None
-    }
+        substitutions = []
+        for state in parsed_msgs['closed_states']:
+            substitutions.append(
+                (state['order_id'], formatted_time(state['ending_at'])))
+        ids = [state['order_id'] for state in parsed_msgs['closed_states']]
+        # We want to generate a single update query, so we use the case
+        # statement to specify the correct new values
+        (OrderState
+            .update(ending_at=Case(OrderState.order_id, substitutions))
+            .where((OrderState.order_id.in_(ids) &
+                    (OrderState.ending_at.is_null())))
+            .execute())
 
-
-def msg_to_trade_dict(msg):
-    return {
-        'side': msg['side'],
-        'amount': msg['size'],
-        'product': msg['product_id'],
-        'price': msg['price'],
-        'time': msg['time']
-    }
+    def _add_new_states(self):
+        (OrderState
+            .insert_many(parsed_msgs['new_states'])
+            .execute())
