@@ -3,7 +3,7 @@ from datetime import datetime
 from cbpro import PublicClient
 from peewee import fn
 
-from pykamino.db import BaseModel, OrderState
+from pykamino.db import OrderState
 
 
 def store_snapshot(product='BTC-USD'):
@@ -40,7 +40,7 @@ class _Snapshot:
                     'order_id': order_msg[2],
                     'product': self.product,
                     # Remove the trailing 's' for plural nouns
-                    # For example: asks -> ask
+                    # For example: asks -> ask,
                     'side': side[:-1]})
         _TempSnapshot.insert_many(snap_list).execute()
         return self.sequence
@@ -52,7 +52,7 @@ class _Snapshot:
         states_still_open = _TempSnapshot.select().where(still_open_condition)
 
         (OrderState
-         .update(ending_at=datetime.now())
+         .update(ending_at=datetime.utcnow())
          .where(~fn.EXISTS(states_still_open) & OrderState.ending_at.is_null())
          .execute())
 
@@ -76,7 +76,7 @@ class _Snapshot:
         """
         # Set the starting_at date for new states *after* closing the older ones.
         # This is to avoid inconsistency (previous ending_at > current starting_at)
-        _TempSnapshot.update(starting_at=datetime.now()).execute()
+        _TempSnapshot.update(starting_at=datetime.utcnow()).execute()
         OrderState.insert_from(_TempSnapshot.select(),
                                OrderState._meta.fields).execute()
         _TempSnapshot.drop_table()

@@ -4,8 +4,8 @@ from functools import partial
 from math import ceil
 from os import cpu_count
 
-from peewee import (CharField, CompositeKey, DateTimeField, DecimalField,
-                    Model, Proxy, UUIDField)
+from peewee import (CharField, Check, CompositeKey, DateTimeField,
+                    DecimalField, Model, Proxy, UUIDField)
 from playhouse.pool import (PooledMySQLDatabase, PooledPostgresqlDatabase,
                             PooledSqliteDatabase)
 
@@ -51,7 +51,6 @@ def db_factory(dbms: Dbms, db_name, user=None, psw=None, host=None, port=None):
 CurrencyField = partial(DecimalField, max_digits=18, decimal_places=8)
 Iso8601DateTimeField = partial(DateTimeField,
                                formats=['%Y-%m-%dT%H:%M:%S.%fZ',
-                                        '%Y-%m-%dT%H:%M:%S.%f',
                                         # This one is for SQLite
                                         '%Y-%m-%d %H:%M:%f'])
 
@@ -86,7 +85,7 @@ class OrderState(BaseModel):
     side = CharField(4)
     price = CurrencyField()
     amount = CurrencyField()
-    starting_at = Iso8601DateTimeField(default=datetime.now())
+    starting_at = Iso8601DateTimeField(default=datetime.utcnow)
     ending_at = Iso8601DateTimeField(null=True)
 
     class Meta:
@@ -94,3 +93,4 @@ class OrderState(BaseModel):
         table_name = 'order_states'
         # Note: the ending comma is required
         indexes = ((('product', 'ending_at', 'starting_at'), False),)
+        constraints = [Check('starting_at < ending_at')]

@@ -8,7 +8,6 @@ from peewee import Case
 from pykamino.db import OrderState, Trade
 from pykamino.scraper.snapshot import store_snapshot
 
-
 class Client():
     def __init__(self, buffer_len=200, products=None):
         if products is None:
@@ -38,11 +37,11 @@ class Client():
     def start(self):
         if not self._is_running:
             self._is_running = True
-            self._receiver.start()
             for p in self.products:
                 # _seqs is a mutable object so it's been passed by reference.
                 # We don't need to pass it again to _filter
                 self._seqs[p] = store_snapshot(p)
+            self._receiver.start()
             self._filter.start()
             self._storer.start()
         else:
@@ -81,10 +80,11 @@ class GracefulThread(Thread):
 
 
 msg_queue = Queue()
-filt_msgs_lock = Condition()
+parsed_msgs_lock = Condition()
 parsed_msgs = {
     'new_trades': [],
     'new_states': [],
+    'changed_states': [],
     'closed_states': []
 }
 
@@ -117,11 +117,12 @@ class MessageParser(GracefulThread):
         msg_queue.task_done()
         try:
             if msg['sequence'] > self.sequences[msg['product_id']]:
-                with filt_msgs_lock:
+                with parsed_msgs_lock:
                     self._parse_and_save_message(msg)
-                    msg_count = sum([len(msg) for msg in parsed_msgs.values()])
+                    msg_count = sum((len(queue)
+                                     for queue in parsed_msgs.values()))
                     if msg_count >= self.buffer_len:
-                        filt_msgs_lock.notify_all()
+                        parsed_msgs_lock.notify_all()
         except KeyError:
             pass
 
@@ -178,10 +179,10 @@ class MessageParser(GracefulThread):
         parsed_msgs['new_states'].append({
             'order_id': msg['order_id'],
             'product': msg['product_id'],
-            'side': msg['side'],
+            'side': 'ask' if msg['side'] == 'sell' else 'bid',
             'price': msg['price'],
             'amount': msg['remaining_size'],
-            'starting_at': msg['time']
+            'starting_at': '000' + msg['time']
         })
 
     def _append_changed_order_message(self, msg):
@@ -197,22 +198,20 @@ class MessageParser(GracefulThread):
         #     "price": "400.23",
         #     "side": "sell"
         # }
-        if 'new_funds' in msg:
-            # We have a market order, skip it
+
+        # Any change message where the price is null indicates that the change
+        # message is for a market order. Change messages for limit orders will
+        # always have a price specified.
+        if msg['price'] is None:
             return
 
-        parsed_msgs['closed_states'].append({
-            'order_id': msg['order_id'],
-            'ending_at': msg['time']
-        })
-
-        parsed_msgs['new_states'].append({
+        parsed_msgs['changed_states'].append({
             'order_id': msg['order_id'],
             'product': msg['product_id'],
-            'side': msg['side'],
+            'side': 'ask' if msg['side'] == 'sell' else 'bid',
             'price': msg['price'],
             'amount': msg['new_size'],
-            'starting_at': msg['time']
+            'time': '000' + msg['time']
         })
 
     def _append_close_order_message(self, msg):
@@ -232,56 +231,77 @@ class MessageParser(GracefulThread):
         # Market orders will not have a remaining_size or price field as they
         # are never on the open order book at a given price.
         if 'remaining_size' not in msg or 'price' not in msg:
-            # We have a market order, skip it
             return
         parsed_msgs['closed_states'].append({
             'order_id': msg['order_id'],
-            'ending_at': msg['time']
+            'ending_at': '000' + msg['time']
         })
 
 
 class MessageStorer(GracefulThread):
     def task(self):
-        with filt_msgs_lock:
-            filt_msgs_lock.wait()
+        with parsed_msgs_lock:
+            parsed_msgs_lock.wait()
             self.store_messages()
             self._clean_parsed_msgs()
 
     def _clean_parsed_msgs(self):
         for key in parsed_msgs:
-            parsed_msgs[key] = []
+            parsed_msgs[key].clear()
 
     def store_messages(self):
         if parsed_msgs['new_trades']:
             self._add_new_trades()
-        if parsed_msgs['closed_states']:
-            self._close_old_states()
         if parsed_msgs['new_states']:
             self._add_new_states()
+        if parsed_msgs['changed_states']:
+            self._update_states()
+        if parsed_msgs['closed_states']:
+            self._close_states()
 
     def _add_new_trades(self):
         (Trade
             .insert_many(parsed_msgs['new_trades'])
             .execute())
 
-    def _close_old_states(self):
-        def formatted_time(ending_at):
+    def _add_new_states(self):
+        (OrderState
+            .insert_many(parsed_msgs['new_states'])
+            .execute())
+
+    def _update_states(self):
+        def as_dt(ending_at):
+            return dt.strptime(ending_at, OrderState.ending_at.formats[0])
+
+        for state in parsed_msgs['changed_states'][:]:
+            query = (OrderState
+                     .select()
+                     .where((OrderState.order_id == state['order_id']) &
+                            (OrderState.starting_at < as_dt(state['time']))))
+            if query.exists():
+                (OrderState
+                    .update(ending_at=state['time'])
+                    .where((OrderState.order_id == state['order_id']) &
+                           (OrderState.ending_at.is_null()))
+                    .execute())
+                state['starting_at'] = state['time']
+                del state['time']
+                (OrderState.insert(state).execute())
+
+    def _close_states(self):
+        def as_dt(ending_at):
             return dt.strptime(ending_at, OrderState.ending_at.formats[0])
 
         substitutions = []
-        for state in parsed_msgs['closed_states']:
+        ids = []
+        for state in parsed_msgs['closed_states'][:]:
+            ids.append(state['order_id'])
             substitutions.append(
-                (state['order_id'], formatted_time(state['ending_at'])))
-        ids = [state['order_id'] for state in parsed_msgs['closed_states']]
+                (state['order_id'], as_dt(state['ending_at'])))
         # We want to generate a single update query, so we use the case
         # statement to specify the correct new values
         (OrderState
             .update(ending_at=Case(OrderState.order_id, substitutions))
-            .where((OrderState.order_id.in_(ids) &
-                    (OrderState.ending_at.is_null())))
-            .execute())
-
-    def _add_new_states(self):
-        (OrderState
-            .insert_many(parsed_msgs['new_states'])
+            .where((OrderState.order_id.in_(ids)) &
+                   (OrderState.ending_at.is_null()))
             .execute())
