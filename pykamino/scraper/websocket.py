@@ -8,6 +8,7 @@ from peewee import Case
 from pykamino.db import OrderState, Trade
 from pykamino.scraper.snapshot import store_snapshot
 
+
 class Client():
     def __init__(self, buffer_len=200, products=None):
         if products is None:
@@ -98,12 +99,6 @@ class MessageReceiver(WebsocketClient):
 
     def on_message(self, msg):
         msg_queue.put(msg)
-
-    def on_error(self, e, data=None):
-        # Ignore the fact that we didn't receive anything (None)
-        # But close the ws on other errors
-        if type(e) is not ValueError:
-            super().on_error(e, data)
 
 
 class MessageParser(GracefulThread):

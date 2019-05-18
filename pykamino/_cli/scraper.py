@@ -1,4 +1,5 @@
 import sys
+from time import sleep
 
 import appdirs
 import service
@@ -22,7 +23,13 @@ class Service(service.Service):
 
     def run(self):
         self.scraper.start()
-        self.wait_for_sigterm()
+        while not self.got_sigterm():
+            # Unfortunately Coinbase Pro has the bad habit of
+            # dropping the WS connection randomly. Let's recreate
+            # it if that happens.
+            sleep(5)
+            if not self.scraper.is_running:
+                self.scraper.start()
 
     def stop(self, block=False):
         super().stop(block=block)
