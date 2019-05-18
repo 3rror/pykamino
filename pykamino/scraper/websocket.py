@@ -2,6 +2,7 @@ from datetime import datetime as dt
 from queue import Queue
 from threading import Condition, Event, Thread
 
+import iso8601
 from cbpro import WebsocketClient
 from peewee import Case
 
@@ -206,7 +207,7 @@ class MessageParser(GracefulThread):
             'side': 'ask' if msg['side'] == 'sell' else 'bid',
             'price': msg['price'],
             'amount': msg['new_size'],
-            'time': '000' + msg['time']
+            'time': msg['time']
         })
 
     def _append_close_order_message(self, msg):
@@ -229,7 +230,7 @@ class MessageParser(GracefulThread):
             return
         parsed_msgs['closed_states'].append({
             'order_id': msg['order_id'],
-            'ending_at': '000' + msg['time']
+            'ending_at': msg['time']
         })
 
 
@@ -265,14 +266,11 @@ class MessageStorer(GracefulThread):
             .execute())
 
     def _update_states(self):
-        def as_dt(ending_at):
-            return dt.strptime(ending_at, OrderState.ending_at.formats[0])
-
         for state in parsed_msgs['changed_states'][:]:
             query = (OrderState
                      .select()
                      .where((OrderState.order_id == state['order_id']) &
-                            (OrderState.starting_at < as_dt(state['time']))))
+                            (OrderState.starting_at < parse_date(state['time']))))
             if query.exists():
                 (OrderState
                     .update(ending_at=state['time'])
@@ -284,15 +282,12 @@ class MessageStorer(GracefulThread):
                 (OrderState.insert(state).execute())
 
     def _close_states(self):
-        def as_dt(ending_at):
-            return dt.strptime(ending_at, OrderState.ending_at.formats[0])
-
         substitutions = []
         ids = []
         for state in parsed_msgs['closed_states'][:]:
             ids.append(state['order_id'])
             substitutions.append(
-                (state['order_id'], as_dt(state['ending_at'])))
+                (state['order_id'], iso8601.parse_date(state['ending_at'])))
         # We want to generate a single update query, so we use the case
         # statement to specify the correct new values
         (OrderState

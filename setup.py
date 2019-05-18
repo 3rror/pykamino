@@ -1,6 +1,9 @@
 from appdirs import user_config_dir
 from setuptools import find_namespace_packages, setup
 
+with open('requirements.txt', 'r') as req:
+    requirements = req.read().splitlines()
+
 setup(
     name='pykamino',
     version='0.9.0',
@@ -16,11 +19,5 @@ setup(
     scripts=['bin/pykamino'],
     data_files=[(user_config_dir('pykamino'), [
                  'pykamino/data/pykamino.toml'])],
-    install_requires=['appdirs~=1.4.0',
-                      'cbpro~=1.1.0',
-                      'pandas~=0.24.0',
-                      'peewee~=3.9.0',
-                      'service~=0.5.0',
-                      'toml~=0.10.0',
-                      ]
+    install_requires=requirements
 )

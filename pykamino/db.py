@@ -4,6 +4,7 @@ from functools import partial
 from math import ceil
 from os import cpu_count
 
+import iso8601
 from peewee import (CharField, Check, CompositeKey, DateTimeField,
                     DecimalField, Model, Proxy, UUIDField)
 from playhouse.pool import (PooledMySQLDatabase, PooledPostgresqlDatabase,
@@ -49,10 +50,22 @@ def db_factory(dbms: Dbms, db_name, user=None, psw=None, host=None, port=None):
 
 
 CurrencyField = partial(DecimalField, max_digits=18, decimal_places=8)
-Iso8601DateTimeField = partial(DateTimeField,
-                               formats=['%Y-%m-%dT%H:%M:%S.%fZ',
-                                        # This one is for SQLite
-                                        '%Y-%m-%d %H:%M:%f'])
+
+
+class Iso8601DateTimeField(DateTimeField):
+    # This is needed for SQlite3 only
+    formats = ['%Y-%m-%d %H:%M:%f']
+
+    def adapt(self, value):
+        """
+        adapt overrides the original method so that it's possible to parse the ISO8601
+        format. This format in fact is not parseable with the usual format strings
+        but it needs specific logic to deal with implicit zeroes.
+        """
+        try:
+            return iso8601.parse_date(value)
+        except iso8601.ParseError:
+            return super().adapt(value)
 
 
 class BaseModel(Model):
