@@ -52,7 +52,7 @@ class _Snapshot:
         states_still_open = _TempSnapshot.select().where(still_open_condition)
 
         (OrderState
-         .update(ending_at=datetime.utcnow())
+         .update(ending_at=datetime.now())
          .where(~fn.EXISTS(states_still_open) & OrderState.ending_at.is_null())
          .execute())
 
@@ -76,7 +76,7 @@ class _Snapshot:
         """
         # Set the starting_at date for new states *after* closing the older ones.
         # This is to avoid inconsistency (previous ending_at > current starting_at)
-        _TempSnapshot.update(starting_at=datetime.utcnow()).execute()
+        _TempSnapshot.update(starting_at=datetime.now()).execute()
         OrderState.insert_from(_TempSnapshot.select(),
                                OrderState._meta.fields).execute()
         _TempSnapshot.drop_table()

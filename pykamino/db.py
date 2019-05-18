@@ -98,7 +98,7 @@ class OrderState(BaseModel):
     side = CharField(4)
     price = CurrencyField()
     amount = CurrencyField()
-    starting_at = Iso8601DateTimeField(default=datetime.utcnow)
+    starting_at = Iso8601DateTimeField(default=datetime.now)
     ending_at = Iso8601DateTimeField(null=True)
 
     class Meta:
