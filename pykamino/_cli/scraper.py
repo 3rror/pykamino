@@ -9,6 +9,9 @@ from pykamino._cli.shared_utils import init_db
 from pykamino.scraper.websocket import Client
 
 
+def create_client():
+    return Client(None, products=cfg['global']['products'])
+
 class Service(service.Service):
     """
     A background process that downloads data, parse it, and store it in a
@@ -19,7 +22,7 @@ class Service(service.Service):
         super().__init__('cbpro_service',
                          pid_dir=appdirs.user_cache_dir('pykamino'),
                          *args, **kwargs)
-        self.scraper = Client(None, products=cfg['global']['products'])
+        self.scraper = create_client()
 
     def run(self):
         self.scraper.start()
@@ -29,6 +32,8 @@ class Service(service.Service):
             # it if that happens.
             sleep(5)
             if not self.scraper.is_running:
+                # It's not possible to reopen a closed socket
+                self.scraper = create_client()
                 self.scraper.start()
 
     def stop(self, block=False):
