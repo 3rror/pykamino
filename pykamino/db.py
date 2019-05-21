@@ -6,7 +6,7 @@ from os import cpu_count
 
 import iso8601
 from peewee import (CharField, Check, CompositeKey, DateTimeField,
-                    DecimalField, Model, Proxy, UUIDField)
+                    DecimalField, Model, Proxy, SmallIntegerField, UUIDField)
 from playhouse.pool import (PooledMySQLDatabase, PooledPostgresqlDatabase,
                             PooledSqliteDatabase)
 
@@ -68,6 +68,18 @@ class Iso8601DateTimeField(DateTimeField):
             return super().adapt(value)
 
 
+class EnumField(SmallIntegerField):
+    def __init__(self, keys, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.enum = Enum('InnerEnum', ' '.join(keys))
+
+    def db_value(self, value):
+        return self.enum[value].value
+
+    def python_value(self, value):
+        return self.enum(value).name
+
+
 class BaseModel(Model):
     class Meta:
         database = database
@@ -81,21 +93,22 @@ class Trade(BaseModel):
     Note: A trade is a match in price of two orders:
     a "buy" one and a "sell" one.
     """
-    side = CharField(4)
+    side = EnumField(keys=('sell', 'buy'), null=False)
     amount = CurrencyField()
-    product = CharField(7)
+    product = EnumField(keys=('BTC-USD',), null=False)
     price = CurrencyField()
     time = Iso8601DateTimeField()
 
     class Meta:
+        table_name = 'trades'
         # Note: the ending comma is required
         indexes = ((('product', 'time'), False),)
 
 
 class OrderState(BaseModel):
     order_id = UUIDField()
-    product = CharField(7)
-    side = CharField(4)
+    product = EnumField(keys=('BTC-USD',), null=False)
+    side = EnumField(keys=('ask', 'bid'), null=False)
     price = CurrencyField()
     amount = CurrencyField()
     starting_at = Iso8601DateTimeField(default=datetime.now)
