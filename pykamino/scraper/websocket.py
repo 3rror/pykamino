@@ -130,12 +130,10 @@ class MessageParser(GracefulThread):
             # We skip them because they don't change the orderbook
             return
 
-        # HACK: use the 6 least significant digits of the sequence number
-        # as µseconds because Coinbase returns a wrongly formatted ISO8601 timestamp
+        # HACK: use system's clock because CB returns a wrongly formatted
+        # ISO8601 datetime.
         # https://github.com/coinbase/coinbase-pro-node/issues/358
-        µ_sec = str(msg['sequence'] % (10**6))
-        last_dot = msg['time'].rfind('.')+1
-        msg['time'] = µ_sec.join((msg['time'][:last_dot], 'Z'))
+        msg['time'] = dt.utcnow().isoformat()
 
         if msg['type'] == 'match':
             self._append_trade_message(msg)
@@ -279,7 +277,7 @@ class MessageStorer(GracefulThread):
             query = (OrderState
                      .select()
                      .where((OrderState.order_id == state['order_id']) &
-                            (OrderState.starting_at < parse_date(state['time']))))
+                            (OrderState.starting_at < iso8601.parse_date(state['time']))))
             if query.exists():
                 (OrderState
                     .update(ending_at=state['time'])
