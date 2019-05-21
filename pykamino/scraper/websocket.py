@@ -129,7 +129,15 @@ class MessageParser(GracefulThread):
         if msg['type'] == 'activate' or msg['type'] == 'received':
             # We skip them because they don't change the orderbook
             return
-        elif msg['type'] == 'match':
+
+        # HACK: use the 6 least significant digits of the sequence number
+        # as µseconds because Coinbase returns a wrongly formatted ISO8601 timestamp
+        # https://github.com/coinbase/coinbase-pro-node/issues/358
+        µ_sec = str(msg['sequence'] % (10**6))
+        last_dot = msg['time'].rfind('.')+1
+        msg['time'] = µ_sec.join((msg['time'][:last_dot], 'Z'))
+
+        if msg['type'] == 'match':
             self._append_trade_message(msg)
         elif msg['type'] == 'open':
             self._append_open_order_message(msg)
@@ -178,7 +186,7 @@ class MessageParser(GracefulThread):
             'side': 'ask' if msg['side'] == 'sell' else 'bid',
             'price': msg['price'],
             'amount': msg['remaining_size'],
-            'starting_at': '000' + msg['time']
+            'starting_at': msg['time']
         })
 
     def _append_changed_order_message(self, msg):
@@ -266,6 +274,7 @@ class MessageStorer(GracefulThread):
             .execute())
 
     def _update_states(self):
+        # Changed orders are rare, so we can afford to spawn 3 queries per order
         for state in parsed_msgs['changed_states'][:]:
             query = (OrderState
                      .select()
