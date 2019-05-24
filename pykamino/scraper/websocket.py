@@ -18,7 +18,6 @@ class Client():
         self._receiver = MessageReceiver(products=products)
         self._filter = MessageParser(buffer_len, sequences=self._seqs)
         self._storer = MessageStorer()
-        self._is_running = False
 
     @property
     def products(self):
@@ -32,28 +31,36 @@ class Client():
     def buffer_length(self, value):
         self._filter.buffer_len = value
 
-    @property
     def is_running(self):
-        return self._is_running
+        try:
+            is_ws_alive = self._receiver.thread.is_alive()
+        except AttributeError:
+            # 'thread' is None because the Client hasn't been started yet
+            is_ws_alive = False
+        return (is_ws_alive and self._filter.is_alive() and
+                self._storer.is_alive())
 
     def start(self):
-        if not self._is_running:
-            self._is_running = True
-            for p in self.products:
-                # _seqs is a mutable object so it's been passed by reference.
-                # We don't need to pass it again to _filter
-                self._seqs[p] = store_snapshot(p)
-            self._receiver.start()
-            self._filter.start()
-            self._storer.start()
-        else:
-            raise RuntimeError('The scraper is already running.')
+        """
+        Start the Coinbase Pro listener.
+        It must be called at most once per object.
+
+        This method will raise a RuntimeError if called more than once on the same object.
+        """
+        if self.is_running():
+            raise RuntimeError("Client already started")
+        for p in self.products:
+            # _seqs is a mutable object so it's been passed by reference.
+            # We don't need to pass it again to _filter
+            self._seqs[p] = store_snapshot(p)
+        self._receiver.start()
+        self._filter.start()
+        self._storer.start()
 
     def stop(self):
         self._receiver.stop()
         self._filter.stop()
         self._storer.stop()
-        self._is_running = False
 
 
 # Threading stuff #

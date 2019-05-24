@@ -7,6 +7,7 @@ import service
 from pykamino._cli.config import config as cfg
 from pykamino._cli.shared_utils import init_db
 from pykamino.scraper.websocket import Client
+from requests.packages.urllib3.exceptions import NewConnectionError
 
 
 def create_client():
@@ -31,10 +32,16 @@ class Service(service.Service):
             # dropping the WS connection randomly. Let's recreate
             # it if that happens.
             sleep(5)
-            if not self.scraper.is_running:
+            if not self.scraper.is_running():
                 # It's not possible to reopen a closed socket
                 self.scraper = create_client()
-                self.scraper.start()
+                while True:
+                    try:
+                        self.scraper.start()
+                    except NewConnectionError:
+                        continue
+                    else:
+                        break
 
     def stop(self, block=False):
         super().stop(block=block)

@@ -2,8 +2,9 @@ from datetime import datetime
 
 from cbpro import PublicClient
 from peewee import fn
+import requests
 
-from pykamino.db import OrderState
+from pykamino.db import OrderState, database
 
 
 def store_snapshot(product='BTC-USD'):
@@ -24,9 +25,10 @@ class _Snapshot:
         _TempSnapshot.create_table()
 
     def sync_db(self):
-        self.download()
-        self.close_old_states()
-        self.insert_new_states()
+        with database:
+            self.download()
+            self.close_old_states()
+            self.insert_new_states()
 
     def download(self):
         cbpro_snap = PublicClient().get_product_order_book(self.product, level=3)
