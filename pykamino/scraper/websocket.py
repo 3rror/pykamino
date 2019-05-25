@@ -1,5 +1,6 @@
+import time
 from datetime import datetime as dt
-from queue import Queue
+from queue import Empty, Queue
 from threading import Condition, Event, Thread
 
 import iso8601
@@ -33,7 +34,7 @@ class Client():
 
     def is_running(self):
         try:
-            is_ws_alive = self._receiver.thread.is_alive()
+            is_ws_alive = not self._receiver.stop
         except AttributeError:
             # 'thread' is None because the Client hasn't been started yet
             is_ws_alive = False
@@ -58,9 +59,15 @@ class Client():
         self._storer.start()
 
     def stop(self):
-        self._receiver.stop()
+        self._receiver.close()
+        print('OK1')
         self._filter.stop()
         self._storer.stop()
+
+        self._filter.join()
+        print('OK2')
+        self._storer.join()
+        print('OK3')
 
 
 # Threading stuff #
@@ -107,27 +114,50 @@ class MessageReceiver(WebsocketClient):
 
     def on_message(self, msg):
         msg_queue.put(msg)
+    
+    def on_close(self):
+        msg_queue.join()
 
+    def on_error(self, e, data=None):
+        msg_queue.join()
+        super().on_error(e, data)
+    
+    def _connect(self):
+        super()._connect()
+        # Super-dirty monkey patch to avoid to wait for ages when
+        # the connection drops
+        self.ws.settimeout(1)
+    
 
 class MessageParser(GracefulThread):
-    def __init__(self, buffer_len, sequences=None):
+    def __init__(self, buffer_len, sequences=None, timeout=1.5):
         super().__init__()
+        self.timeout = timeout
         self.sequences = sequences
         self.buffer_len = buffer_len
 
     def task(self):
-        msg = msg_queue.get()
-        msg_queue.task_done()
         try:
+            msg = msg_queue.get(timeout=0.3)
+            msg_queue.task_done()
+        except Empty:
+            return
+        try:
+            # The first message is different, thus it has no 'sequence'
             if msg['sequence'] > self.sequences[msg['product_id']]:
                 with parsed_msgs_lock:
                     self._parse_and_save_message(msg)
                     msg_count = sum((len(queue)
-                                     for queue in parsed_msgs.values()))
+                                        for queue in parsed_msgs.values()))
                     if msg_count >= self.buffer_len:
                         parsed_msgs_lock.notify_all()
         except KeyError:
             pass
+    
+    def stop(self):
+        with parsed_msgs_lock:
+            parsed_msgs_lock.notify_all()
+        super().stop()
 
     def _parse_and_save_message(self, msg):
         # All possibile message types are:
