@@ -1,4 +1,3 @@
-import time
 from datetime import datetime as dt
 from queue import Empty, Queue
 from threading import Condition, Event, Thread
@@ -7,7 +6,7 @@ import iso8601
 from cbpro import WebsocketClient
 from peewee import Case
 
-from pykamino.db import OrderState, Trade
+from pykamino.db import OrderState, Trade, database
 from pykamino.scraper.snapshot import store_snapshot
 
 
@@ -114,20 +113,20 @@ class MessageReceiver(WebsocketClient):
 
     def on_message(self, msg):
         msg_queue.put(msg)
-    
+
     def on_close(self):
         msg_queue.join()
 
     def on_error(self, e, data=None):
         msg_queue.join()
         super().on_error(e, data)
-    
+
     def _connect(self):
         super()._connect()
         # Super-dirty monkey patch to avoid to wait for ages when
         # the connection drops
         self.ws.settimeout(1)
-    
+
 
 class MessageParser(GracefulThread):
     def __init__(self, buffer_len, sequences=None, timeout=1.5):
@@ -153,7 +152,7 @@ class MessageParser(GracefulThread):
                         parsed_msgs_lock.notify_all()
         except KeyError:
             pass
-    
+
     def stop(self):
         with parsed_msgs_lock:
             parsed_msgs_lock.notify_all()
@@ -289,14 +288,15 @@ class MessageStorer(GracefulThread):
             parsed_msgs[key].clear()
 
     def store_messages(self):
-        if parsed_msgs['new_trades']:
-            self._add_new_trades()
-        if parsed_msgs['new_states']:
-            self._add_new_states()
-        if parsed_msgs['changed_states']:
-            self._update_states()
-        if parsed_msgs['closed_states']:
-            self._close_states()
+        with database:
+            if parsed_msgs['new_trades']:
+                self._add_new_trades()
+            if parsed_msgs['new_states']:
+                self._add_new_states()
+            if parsed_msgs['changed_states']:
+                self._update_states()
+            if parsed_msgs['closed_states']:
+                self._close_states()
 
     def _add_new_trades(self):
         (Trade
