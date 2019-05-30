@@ -70,7 +70,7 @@ class Iso8601DateTimeField(DateTimeField):
 
 class EnumField(SmallIntegerField):
     def __init__(self, keys, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        super().__init__(null=False, *args, **kwargs)
         self.enum = Enum('InnerEnum', ' '.join(keys))
 
     def db_value(self, value):
@@ -93,9 +93,9 @@ class Trade(BaseModel):
     Note: A trade is a match in price of two orders:
     a "buy" one and a "sell" one.
     """
-    side = EnumField(keys=('sell', 'buy'), null=False)
+    side = EnumField(keys=('sell', 'buy'))
     amount = CurrencyField()
-    product = EnumField(keys=('BTC-USD',), null=False)
+    product = EnumField(keys=('BTC-USD', 'ETH-USD'))
     price = CurrencyField()
     time = Iso8601DateTimeField()
 
@@ -107,8 +107,8 @@ class Trade(BaseModel):
 
 class OrderState(BaseModel):
     order_id = UUIDField()
-    product = EnumField(keys=('BTC-USD',), null=False)
-    side = EnumField(keys=('ask', 'bid'), null=False)
+    product = EnumField(keys=('BTC-USD', 'ETH-USD'))
+    side = EnumField(keys=('ask', 'bid'))
     price = CurrencyField()
     amount = CurrencyField()
     starting_at = Iso8601DateTimeField(default=datetime.now)
