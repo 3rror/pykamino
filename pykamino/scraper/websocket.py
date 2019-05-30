@@ -1,164 +1,88 @@
+import asyncio
 from datetime import datetime as dt
-from queue import Empty, Queue
-from threading import Condition, Event, Thread
 
+import aiohttp
 import iso8601
-from cbpro import WebsocketClient
 from peewee import Case
 
 from pykamino.db import OrderState, Trade, database
 from pykamino.scraper.snapshot import store_snapshot
 
+coinbase_feed = 'wss://ws-feed.pro.coinbase.com'
+
 
 class Client():
-    def __init__(self, buffer_len=200, products=None):
+    def __init__(self, buffer_len=200, products=None, session=None):
         if products is None:
             products = ['BTC-USD']
-        self._seqs = {prod: -1 for prod in products}
-        self._receiver = MessageReceiver(products=products)
-        self._filter = MessageParser(buffer_len, sequences=self._seqs)
-        self._storer = MessageStorer()
+        self._private_session = not bool(session)
+        if self._private_session:
+            self.session = aiohttp.ClientSession()
+        self.products = products
+        self.buf_len = buffer_len
 
-    @property
-    def products(self):
-        return self._seqs.keys()
-
-    @property
-    def buffer_length(self):
-        return self._filter.buffer_len
-
-    @buffer_length.setter
-    def buffer_length(self, value):
-        self._filter.buffer_len = value
-
-    def is_running(self):
+    async def coro(self):
+        """
+        Coroutine to initialize and listen to the websocket.
+        """
         try:
-            is_ws_alive = not self._receiver.stop
-        except AttributeError:
-            # 'thread' is None because the Client hasn't been started yet
-            is_ws_alive = False
-        return (is_ws_alive and self._filter.is_alive() and
-                self._storer.is_alive())
+            ws, seqs = await asyncio.gather(self._init_ws(coinbase_feed),
+                                            store_snapshot('BTC-USD'))
+            parser = MessageParser(seqs, self.buf_len)
+            async for message in ws:
+                if message.type == aiohttp.WSMsgType.TEXT:
+                    # This is pure CPU, no need to await
+                # parser.classify(message)
+                    print(message)
+                elif message.type == aiohttp.WSMsgType.ERROR:
+                    break
+        finally:
+            await ws.close()
+            if self._private_session:
+                # Close the connection only if it's private
+                await self.session.close()
 
     def start(self):
         """
-        Start the Coinbase Pro listener.
-        It must be called at most once per object.
-
-        This method will raise a RuntimeError if called more than once on the same object.
+        Start the Client in a hassle-free way. If you need better control
+        over the event loop, make sure to use `coro()` instead of `start()` as
+        the former returns the underlying Client coroutine.
         """
-        if self.is_running():
-            raise RuntimeError("Client already started")
-        for p in self.products:
-            # _seqs is a mutable object so it's been passed by reference.
-            # We don't need to pass it again to _filter
-            self._seqs[p] = store_snapshot(p)
-        self._receiver.start()
-        self._filter.start()
-        self._storer.start()
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(self.coro())
 
-    def stop(self):
-        self._receiver.close()
-        print('OK1')
-        self._filter.stop()
-        self._storer.stop()
-
-        self._filter.join()
-        print('OK2')
-        self._storer.join()
-        print('OK3')
+    async def _init_ws(self, url, *args, **kwargs):
+        feed_conf = {'type': 'subscribe', 'channels': ['full'],
+                     'product_ids': self.products}
+        ws = await self.session.ws_connect(url, *args, **kwargs)
+        await ws.send_json(feed_conf)
+        return ws
 
 
-# Threading stuff #
-
-class GracefulThread(Thread):
-    """
-    A thread that can be graceously stopped by calling `stop()`.
-
-    Override `task()` to define its activity. Do note that `task()` will be
-    called in a loop.
-    """
-
-    def __init__(self):
-        super().__init__()
-        self._close_cond = Event()
-
-    def run(self):
-        while not self._close_cond.is_set():
-            self.task()
-
-    def task(self):
-        raise NotImplementedError()
-
-    def stop(self):
-        self._close_cond.set()
-
-
-msg_queue = Queue()
-parsed_msgs_lock = Condition()
-parsed_msgs = {
-    'new_trades': [],
-    'new_states': [],
-    'changed_states': [],
-    'closed_states': []
-}
-
-
-class MessageReceiver(WebsocketClient):
-    def __init__(self, *args, **kwargs):
-        super().__init__(channels=['full'], *args, **kwargs)
-
-    def on_open(self):
-        pass
-
-    def on_message(self, msg):
-        msg_queue.put(msg)
-
-    def on_close(self):
-        msg_queue.join()
-
-    def on_error(self, e, data=None):
-        msg_queue.join()
-        super().on_error(e, data)
-
-    def _connect(self):
-        super()._connect()
-        # Super-dirty monkey patch to avoid to wait for ages when
-        # the connection drops
-        self.ws.settimeout(1)
-
-
-class MessageParser(GracefulThread):
-    def __init__(self, buffer_len, sequences=None, timeout=1.5):
-        super().__init__()
-        self.timeout = timeout
+class MessageParser:
+    def __init__(self, sequences, buffer_len=200):
         self.sequences = sequences
         self.buffer_len = buffer_len
+        self.messages = {
+            'new_trades': [],
+            'new_states': [],
+            'changed_states': [],
+            'closed_states': []}
 
-    def task(self):
+    def parse(self, msg):
         try:
-            msg = msg_queue.get(timeout=0.3)
-            msg_queue.task_done()
-        except Empty:
-            return
-        try:
-            # The first message is different, thus it has no 'sequence'
+            # The first message is different: it has no 'sequence'
             if msg['sequence'] > self.sequences[msg['product_id']]:
-                with parsed_msgs_lock:
-                    self._parse_and_save_message(msg)
-                    msg_count = sum((len(queue)
-                                        for queue in parsed_msgs.values()))
-                    if msg_count >= self.buffer_len:
-                        parsed_msgs_lock.notify_all()
+                self.classify(msg)
+                msg_count = sum((len(lst)
+                                 for lst in self.messages.values()))
+                if msg_count >= self.buffer_len:
+                    pass
+                    # TODO: copy messages to the other process
         except KeyError:
             pass
 
-    def stop(self):
-        with parsed_msgs_lock:
-            parsed_msgs_lock.notify_all()
-        super().stop()
-
-    def _parse_and_save_message(self, msg):
+    def classify(self, msg):
         # All possibile message types are:
         # activate, received, match, open, change, done
 
@@ -172,15 +96,15 @@ class MessageParser(GracefulThread):
         msg['time'] = dt.utcnow().isoformat()
 
         if msg['type'] == 'match':
-            self._append_trade_message(msg)
+            self._append_to_trades(msg)
         elif msg['type'] == 'open':
-            self._append_open_order_message(msg)
-        elif msg['type'] == 'change':
-            self._append_changed_order_message(msg)
+            self._append_to_open_orders(msg)
         elif msg['type'] == 'done':
-            self._append_close_order_message(msg)
+            self._append_to_closed_orders(msg)
+        elif msg['type'] == 'change':
+            self._append_to_changed_orders(msg)
 
-    def _append_trade_message(self, msg):
+    def _append_to_trades(self, msg):
         # Match message example:
         # {
         #     "type": "match",
@@ -194,7 +118,7 @@ class MessageParser(GracefulThread):
         #     "price": "400.23",
         #     "side": "sell"
         # }
-        parsed_msgs['new_trades'].append({
+        self.messages['new_trades'].append({
             'side': msg['side'],
             'amount': msg['size'],
             'product': msg['product_id'],
@@ -202,7 +126,7 @@ class MessageParser(GracefulThread):
             'time': msg['time']
         })
 
-    def _append_open_order_message(self, msg):
+    def _append_to_open_orders(self, msg):
         # Open message example
         # {
         #     "type": "open",
@@ -214,7 +138,7 @@ class MessageParser(GracefulThread):
         #     "remaining_size": "1.00",
         #     "side": "sell"
         # }
-        parsed_msgs['new_states'].append({
+        self.messages['new_states'].append({
             'order_id': msg['order_id'],
             'product': msg['product_id'],
             'side': 'ask' if msg['side'] == 'sell' else 'bid',
@@ -223,7 +147,7 @@ class MessageParser(GracefulThread):
             'starting_at': msg['time']
         })
 
-    def _append_changed_order_message(self, msg):
+    def _append_to_changed_orders(self, msg):
         # Change order message example:
         # {
         #     "type": "change",
@@ -239,11 +163,11 @@ class MessageParser(GracefulThread):
 
         # Any change message where the price is null indicates that the change
         # message is for a market order. Change messages for limit orders will
-        # always have a price specified.
+        # always have "price" defined.
         if msg['price'] is None:
             return
 
-        parsed_msgs['changed_states'].append({
+        self.messages['changed_states'].append({
             'order_id': msg['order_id'],
             'product': msg['product_id'],
             'side': 'ask' if msg['side'] == 'sell' else 'bid',
@@ -252,7 +176,7 @@ class MessageParser(GracefulThread):
             'time': msg['time']
         })
 
-    def _append_close_order_message(self, msg):
+    def _append_to_closed_orders(self, msg):
         # Done message example
         # {
         #     "type": "done",
@@ -270,72 +194,71 @@ class MessageParser(GracefulThread):
         # are never on the open order book at a given price.
         if 'remaining_size' not in msg or 'price' not in msg:
             return
-        parsed_msgs['closed_states'].append({
+        self.messages['closed_states'].append({
             'order_id': msg['order_id'],
-            'ending_at': msg['time']
-        })
+            'ending_at': msg['time']})
 
 
-class MessageStorer(GracefulThread):
-    def task(self):
-        with parsed_msgs_lock:
-            parsed_msgs_lock.wait()
-            self.store_messages()
-            self._clean_parsed_msgs()
+# class MessageStorer(GracefulThread):
+#     def task(self):
+#         with parsed_msgs_lock:
+#             parsed_msgs_lock.wait()
+#             self.store_messages()
+#             self._clean_parsed_msgs()
 
-    def _clean_parsed_msgs(self):
-        for key in parsed_msgs:
-            parsed_msgs[key].clear()
+#     def _clean_parsed_msgs(self):
+#         for key in parsed_msgs:
+#             parsed_msgs[key].clear()
 
-    def store_messages(self):
-        with database:
-            if parsed_msgs['new_trades']:
-                self._add_new_trades()
-            if parsed_msgs['new_states']:
-                self._add_new_states()
-            if parsed_msgs['changed_states']:
-                self._update_states()
-            if parsed_msgs['closed_states']:
-                self._close_states()
+#     def store_messages(self):
+#         with database:
+#             if parsed_msgs['new_trades']:
+#                 self._add_new_trades()
+#             if parsed_msgs['new_states']:
+#                 self._add_new_states()
+#             if parsed_msgs['changed_states']:
+#                 self._update_states()
+#             if parsed_msgs['closed_states']:
+#                 self._close_states()
 
-    def _add_new_trades(self):
-        (Trade
-            .insert_many(parsed_msgs['new_trades'])
-            .execute())
+#     def _add_new_trades(self):
+#         (Trade
+#             .insert_many(parsed_msgs['new_trades'])
+#             .execute())
 
-    def _add_new_states(self):
-        (OrderState
-            .insert_many(parsed_msgs['new_states'])
-            .execute())
+#     def _add_new_states(self):
+#         (OrderState
+#             .insert_many(parsed_msgs['new_states'])
+#             .execute())
 
-    def _update_states(self):
-        # Changed orders are rare, so we can afford to spawn 3 queries per order
-        for state in parsed_msgs['changed_states'][:]:
-            query = (OrderState
-                     .select()
-                     .where((OrderState.order_id == state['order_id']) &
-                            (OrderState.starting_at < iso8601.parse_date(state['time']))))
-            if query.exists():
-                (OrderState
-                    .update(ending_at=state['time'])
-                    .where((OrderState.order_id == state['order_id']) &
-                           (OrderState.ending_at.is_null()))
-                    .execute())
-                state['starting_at'] = state['time']
-                del state['time']
-                (OrderState.insert(state).execute())
+#     def _update_states(self):
+#         # Changed orders are rare, so we can afford to spawn 3 queries per order
+#         for state in parsed_msgs['changed_states'][:]:
+#             query = (OrderState
+#                      .select()
+#                      .where((OrderState.order_id == state['order_id']) &
+#                             (OrderState.starting_at < iso8601.parse_date(state['time']))))
+#             if query.exists():
+#                 (OrderState
+#                     .update(ending_at=state['time'])
+#                     .where((OrderState.order_id == state['order_id']) &
+#                            (OrderState.ending_at.is_null()))
+#                     .execute())
+#                 state['starting_at'] = state['time']
+#                 del state['time']
+#                 (OrderState.insert(state).execute())
 
-    def _close_states(self):
-        substitutions = []
-        ids = []
-        for state in parsed_msgs['closed_states'][:]:
-            ids.append(state['order_id'])
-            substitutions.append(
-                (state['order_id'], iso8601.parse_date(state['ending_at'])))
-        # We want to generate a single update query, so we use the case
-        # statement to specify the correct new values
-        (OrderState
-            .update(ending_at=Case(OrderState.order_id, substitutions))
-            .where((OrderState.order_id.in_(ids)) &
-                   (OrderState.ending_at.is_null()))
-            .execute())
+#     def _close_states(self):
+#         substitutions = []
+#         ids = []
+#         for state in parsed_msgs['closed_states'][:]:
+#             ids.append(state['order_id'])
+#             substitutions.append(
+#                 (state['order_id'], iso8601.parse_date(state['ending_at'])))
+#         # We want to generate a single update query, so we use the case
+#         # statement to specify the correct new values
+#         (OrderState
+#             .update(ending_at=Case(OrderState.order_id, substitutions))
+#             .where((OrderState.order_id.in_(ids)) &
+#                    (OrderState.ending_at.is_null()))
+#             .execute())

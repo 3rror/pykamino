@@ -1,15 +1,17 @@
 from datetime import datetime
 
-from cbpro import PublicClient
+import aiohttp
 from peewee import fn
 
 from pykamino.db import OrderState, database
 
+base_url = 'https://api.pro.coinbase.com/products/{}/book'
 
-def store_snapshot(product='BTC-USD'):
+
+async def store_snapshot(product='BTC-USD'):
     with database:
         snap = _Snapshot(product)
-        snap.sync_db()
+        await snap.sync_db()
         return snap.sequence
 
 
@@ -22,15 +24,18 @@ class _Snapshot:
     def __init__(self, product='BTC-USD'):
         self.product = product
         self.sequence = -1
+        # TODO: this only supports BTC-USD for now!
         _TempSnapshot.create_table()
 
-    def sync_db(self):
-        self.download()
+    async def sync_db(self):
+        await self.download()
         self.close_old_states()
         self.insert_new_states()
 
-    def download(self):
-        cbpro_snap = PublicClient().get_product_order_book(self.product, level=3)
+    async def download(self):
+        async with aiohttp.request('GET', base_url.format('BTC-USD'), params={'level': 3}) as response:
+            assert response.status // 100 == 2
+            cbpro_snap = await response.json()
         self.sequence = cbpro_snap['sequence']
         snap_list = []
         for side in ('bids', 'asks'):
