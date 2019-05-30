@@ -1,6 +1,6 @@
 import asyncio
 from datetime import datetime as dt
-
+from time import sleep
 import aiohttp
 import iso8601
 from peewee import Case
@@ -26,21 +26,17 @@ class Client():
         Coroutine to initialize and listen to the websocket.
         """
         try:
-            ws, seqs = await asyncio.gather(self._init_ws(coinbase_feed),
-                                            store_snapshot('BTC-USD'))
-            parser = MessageParser(seqs, self.buf_len)
-            async for message in ws:
+            self.ws, *seqs = await asyncio.gather(self._init_ws(coinbase_feed),
+                                               *[store_snapshot(p) for p in self.products])
+            parser = MessageParser(dict(zip(self.products, seqs)), self.buf_len)
+            async for message in self.ws:
                 if message.type == aiohttp.WSMsgType.TEXT:
                     # This is pure CPU, no need to await
-                # parser.classify(message)
-                    print(message)
+                    parser.parse(message.json())
                 elif message.type == aiohttp.WSMsgType.ERROR:
                     break
         finally:
-            await ws.close()
-            if self._private_session:
-                # Close the connection only if it's private
-                await self.session.close()
+            await self.close()
 
     def start(self):
         """
@@ -50,6 +46,12 @@ class Client():
         """
         loop = asyncio.get_event_loop()
         loop.run_until_complete(self.coro())
+
+    async def close(self):
+        if self.ws is not None:
+            await self.ws.close()
+        if self._private_session:
+            await self.session.close()
 
     async def _init_ws(self, url, *args, **kwargs):
         feed_conf = {'type': 'subscribe', 'channels': ['full'],
@@ -74,13 +76,14 @@ class MessageParser:
             # The first message is different: it has no 'sequence'
             if msg['sequence'] > self.sequences[msg['product_id']]:
                 self.classify(msg)
-                msg_count = sum((len(lst)
-                                 for lst in self.messages.values()))
-                if msg_count >= self.buffer_len:
+                if self.message_count() >= self.buffer_len:
                     pass
                     # TODO: copy messages to the other process
         except KeyError:
             pass
+
+    def message_count(self):
+        return sum((len(lst) for lst in self.messages.values()))
 
     def classify(self, msg):
         # All possibile message types are:
@@ -199,7 +202,7 @@ class MessageParser:
             'ending_at': msg['time']})
 
 
-# class MessageStorer(GracefulThread):
+# class MessageStorer():
 #     def task(self):
 #         with parsed_msgs_lock:
 #             parsed_msgs_lock.wait()

@@ -10,5 +10,5 @@ def create_client():
 
 
 init_db()
-scraper = Client(products=['BTC-USD'])
+scraper = Client(products=['BTC-USD', 'ETH-USD'])
 scraper.start()
