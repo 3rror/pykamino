@@ -1,6 +1,9 @@
 import asyncio
+import multiprocessing
 from datetime import datetime as dt
+from multiprocessing import Process
 from time import sleep
+
 import aiohttp
 import iso8601
 from peewee import Case
@@ -12,27 +15,34 @@ coinbase_feed = 'wss://ws-feed.pro.coinbase.com'
 
 
 class Client():
-    def __init__(self, buffer_len=200, products=None, session=None):
-        if products is None:
-            products = ['BTC-USD']
+    def __init__(self, buffer_len=None, products=('BTC-USD',), session=None):
+        self.products = products
+        self.buf_len = 400*len(products) if buffer_len is None else buffer_len
         self._private_session = not bool(session)
         if self._private_session:
             self.session = aiohttp.ClientSession()
-        self.products = products
-        self.buf_len = buffer_len
+        self.storer_rx, self.storer_tx = multiprocessing.Pipe(duplex=False)
+        self.storer_close = multiprocessing.Event()
+        self.storer = Process(target=MessageStorer(self.storer_close),
+                              name='pykamino-storer', args=(self.storer_rx,))
 
     async def coro(self):
         """
         Coroutine to initialize and listen to the websocket.
         """
         try:
+            self.storer.start()
             self.ws, *seqs = await asyncio.gather(self._init_ws(coinbase_feed),
-                                               *[store_snapshot(p) for p in self.products])
-            parser = MessageParser(dict(zip(self.products, seqs)), self.buf_len)
+                                                  *[store_snapshot(p) for p in self.products])
+            parser = MessageParser(
+                dict(zip(self.products, seqs)), self.buf_len)
             async for message in self.ws:
                 if message.type == aiohttp.WSMsgType.TEXT:
                     # This is pure CPU, no need to await
                     parser.parse(message.json())
+                    if parser.message_count() >= self.buf_len:
+                        self.storer_tx.send(parser.messages.copy())
+                        parser.clear()
                 elif message.type == aiohttp.WSMsgType.ERROR:
                     break
         finally:
@@ -52,6 +62,8 @@ class Client():
             await self.ws.close()
         if self._private_session:
             await self.session.close()
+        self.storer_close.set()
+        self.storer.join()
 
     async def _init_ws(self, url, *args, **kwargs):
         feed_conf = {'type': 'subscribe', 'channels': ['full'],
@@ -76,14 +88,15 @@ class MessageParser:
             # The first message is different: it has no 'sequence'
             if msg['sequence'] > self.sequences[msg['product_id']]:
                 self.classify(msg)
-                if self.message_count() >= self.buffer_len:
-                    pass
-                    # TODO: copy messages to the other process
         except KeyError:
             pass
 
     def message_count(self):
         return sum((len(lst) for lst in self.messages.values()))
+
+    def clear(self):
+        for lst in self.messages.values():
+            lst.clear()
 
     def classify(self, msg):
         # All possibile message types are:
@@ -202,66 +215,84 @@ class MessageParser:
             'ending_at': msg['time']})
 
 
-# class MessageStorer():
-#     def task(self):
-#         with parsed_msgs_lock:
-#             parsed_msgs_lock.wait()
-#             self.store_messages()
-#             self._clean_parsed_msgs()
+class MessageStorer():
+    """
+    A callable class meant to be run in a subprocess.
+    `MessageStores` waits for a list of parsed messages and
+    then stores them in parallel.
+    """
 
-#     def _clean_parsed_msgs(self):
-#         for key in parsed_msgs:
-#             parsed_msgs[key].clear()
+    def __init__(self, close_event):
+        self.close_event = close_event
+        self.messages = {}
 
-#     def store_messages(self):
-#         with database:
-#             if parsed_msgs['new_trades']:
-#                 self._add_new_trades()
-#             if parsed_msgs['new_states']:
-#                 self._add_new_states()
-#             if parsed_msgs['changed_states']:
-#                 self._update_states()
-#             if parsed_msgs['closed_states']:
-#                 self._close_states()
+    def __call__(self, conn):
+        while not self.close_event.is_set():
+            if conn.poll(timeout=0.5):
+                try:
+                    msgs = conn.recv()
+                except EOFError:
+                    # The other end has been closed. There is reason
+                    # To keep this process alive
+                    break
+                else:
+                    self.messages = msgs
+                    self.store_messages()
+                    self.messages = {}
 
-#     def _add_new_trades(self):
-#         (Trade
-#             .insert_many(parsed_msgs['new_trades'])
-#             .execute())
+    def store_messages(self):
+        with database:
+            if self.messages['new_trades']:
+                self._add_new_trades()
+            if self.messages['new_states']:
+                self._add_new_states()
+            if self.messages['changed_states']:
+                self._update_states()
+            if self.messages['closed_states']:
+                self._close_states()
 
-#     def _add_new_states(self):
-#         (OrderState
-#             .insert_many(parsed_msgs['new_states'])
-#             .execute())
+    def _clean_parsed_msgs(self):
+        for key in self.messages:
+            self.messages[key].clear()
 
-#     def _update_states(self):
-#         # Changed orders are rare, so we can afford to spawn 3 queries per order
-#         for state in parsed_msgs['changed_states'][:]:
-#             query = (OrderState
-#                      .select()
-#                      .where((OrderState.order_id == state['order_id']) &
-#                             (OrderState.starting_at < iso8601.parse_date(state['time']))))
-#             if query.exists():
-#                 (OrderState
-#                     .update(ending_at=state['time'])
-#                     .where((OrderState.order_id == state['order_id']) &
-#                            (OrderState.ending_at.is_null()))
-#                     .execute())
-#                 state['starting_at'] = state['time']
-#                 del state['time']
-#                 (OrderState.insert(state).execute())
+    def _add_new_trades(self):
+        (Trade
+            .insert_many(self.messages['new_trades'])
+            .execute())
 
-#     def _close_states(self):
-#         substitutions = []
-#         ids = []
-#         for state in parsed_msgs['closed_states'][:]:
-#             ids.append(state['order_id'])
-#             substitutions.append(
-#                 (state['order_id'], iso8601.parse_date(state['ending_at'])))
-#         # We want to generate a single update query, so we use the case
-#         # statement to specify the correct new values
-#         (OrderState
-#             .update(ending_at=Case(OrderState.order_id, substitutions))
-#             .where((OrderState.order_id.in_(ids)) &
-#                    (OrderState.ending_at.is_null()))
-#             .execute())
+    def _add_new_states(self):
+        (OrderState
+            .insert_many(self.messages['new_states'])
+            .execute())
+
+    def _update_states(self):
+        # Changed orders are rare, so we can afford to spawn 3 queries per order
+        for state in self.messages['changed_states'][:]:
+            query = (OrderState
+                     .select()
+                     .where((OrderState.order_id == state['order_id']) &
+                            (OrderState.starting_at < iso8601.parse_date(state['time']))))
+            if query.exists():
+                (OrderState
+                    .update(ending_at=state['time'])
+                    .where((OrderState.order_id == state['order_id']) &
+                           (OrderState.ending_at.is_null()))
+                    .execute())
+                state['starting_at'] = state['time']
+                del state['time']
+                (OrderState.insert(state).execute())
+
+    def _close_states(self):
+        substitutions = []
+        ids = []
+        for state in self.messages['closed_states']:
+            ids.append(state['order_id'])
+            substitutions.append(
+                (state['order_id'], iso8601.parse_date(state['ending_at'])))
+        # We want to generate a single update query, so we use the case
+        # statement to specify the correct new values
+        (OrderState
+            .update(ending_at=Case(OrderState.order_id, substitutions))
+            .where((OrderState.order_id.in_(ids)) &
+                   (OrderState.ending_at.is_null()))
+            .execute())
