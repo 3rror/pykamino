@@ -9,7 +9,7 @@ base_url = 'https://api.pro.coinbase.com/products/{}/book'
 
 
 async def store_snapshot(product='BTC-USD'):
-    with database:
+    with database.connection_context():
         snap = _Snapshot(product)
         await snap.sync_db()
         return snap.sequence
@@ -24,8 +24,8 @@ class _Snapshot:
     def __init__(self, product='BTC-USD'):
         self.product = product
         self.sequence = -1
-        # TODO: this only supports BTC-USD for now!
-        _TempSnapshot.create_table()
+        self.temp_snapshot = create_temp_model(product)
+        self.temp_snapshot.create_table(safe=False)
 
     async def sync_db(self):
         await self.download()
@@ -33,7 +33,7 @@ class _Snapshot:
         self.insert_new_states()
 
     async def download(self):
-        async with aiohttp.request('GET', base_url.format('BTC-USD'), params={'level': 3}) as response:
+        async with aiohttp.request('GET', base_url.format(self.product), params={'level': 3}) as response:
             assert response.status // 100 == 2
             cbpro_snap = await response.json()
         self.sequence = cbpro_snap['sequence']
@@ -48,29 +48,31 @@ class _Snapshot:
                     # Remove the trailing 's' for plural nouns
                     # For example: asks -> ask,
                     'side': side[:-1]})
-        _TempSnapshot.insert_many(snap_list).execute()
+        self.temp_snapshot.insert_many(snap_list).execute()
         return self.sequence
 
     def close_old_states(self):
         still_open_condition = (
-            (OrderState.order_id == _TempSnapshot.order_id) &
-            (OrderState.amount == _TempSnapshot.amount))
-        states_still_open = _TempSnapshot.select().where(still_open_condition)
+            (OrderState.order_id == self.temp_snapshot.order_id) &
+            (OrderState.amount == self.temp_snapshot.amount))
+        states_still_open = self.temp_snapshot.select().where(still_open_condition)
 
         (OrderState
          .update(ending_at=datetime.now())
-         .where(~fn.EXISTS(states_still_open) & OrderState.ending_at.is_null())
+         .where(~fn.EXISTS(states_still_open) &
+                OrderState.ending_at.is_null() &
+                (OrderState.product == self.product))
          .execute())
 
-        # Remove from _TempSnapshot orders that didn't change.
+        # Remove from TempSnapshot orders that didn't change.
         # We don't need to store them again.
-        (_TempSnapshot
+        (self.temp_snapshot
          .delete()
-         .where(_TempSnapshot.order_id.in_(
-             _TempSnapshot
-             .select(_TempSnapshot.order_id)
-             .join(OrderState, on=(_TempSnapshot.order_id == OrderState.order_id))
-             .where(_TempSnapshot.amount == OrderState.amount)))
+         .where(self.temp_snapshot.order_id.in_(
+             self.temp_snapshot
+             .select(self.temp_snapshot.order_id)
+             .join(OrderState, on=(self.temp_snapshot.order_id == OrderState.order_id))
+             .where(self.temp_snapshot.amount == OrderState.amount)))
          .execute())
 
     def insert_new_states(self, clear=True):
@@ -82,18 +84,13 @@ class _Snapshot:
         """
         # Set the starting_at date for new states *after* closing the older ones.
         # This is to avoid inconsistency (previous ending_at > current starting_at)
-        _TempSnapshot.update(starting_at=datetime.now()).execute()
-        OrderState.insert_from(_TempSnapshot.select(),
+        self.temp_snapshot.update(starting_at=datetime.now()).execute()
+        OrderState.insert_from(self.temp_snapshot.select(),
                                OrderState._meta.fields).execute()
 
 
-class _TempSnapshot(OrderState):
-    """
-    A temporary table in lieu of a `NOT IN` clause for performance reasons.
-    Its purpose is to check what open orders are in the database but not
-    in the snapshot, so that we know these orders are now in a
-    closed state.
-    """
-
-    class Meta:
-        temporary = True
+def create_temp_model(product):
+    temp = type('TempSnapshot', (OrderState,), {})
+    temp._meta.temporary = True
+    temp._meta.table_name = f'tempsnapshot-{product}'
+    return temp
