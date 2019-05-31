@@ -14,6 +14,8 @@ pip3 install pykamino '/path/to/directory'
 This command will install `pykamino` along with its minimal dependencies (internet connection required if none of them is in a local repository).\
 Do note that in order to function, `pykamino` has to connect to a relational database. Since we cannot know a priori which DBMS the end user runs, database drivers are considered optional dependencies, so it's up to the end user to install the needed database driver. Currently, we support PostgreSQL, MariaDB/MySQL and SQLite 3.
 
+Pykamino requires Python 3.6+.
+
 ## Configuration
 
 After the installation, you'll find a file named `pykamino.toml` inside your config directory: `$XDG_CONFIG_HOME/pykamino` on Linux, `~/Library/Application Support/pykamino/` on macOS. Edit it according to your database and products you want to consider.
