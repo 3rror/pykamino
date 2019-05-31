@@ -1,10 +1,10 @@
 import asyncio
 import multiprocessing
 from datetime import datetime as dt
-from multiprocessing import Process
 from time import sleep
 
 import aiohttp
+# iso8601 is needed as fromisoformat() has been added in Python 3.7
 import iso8601
 from peewee import Case
 
@@ -17,14 +17,12 @@ coinbase_feed = 'wss://ws-feed.pro.coinbase.com'
 class Client():
     def __init__(self, buffer_len=None, products=('BTC-USD',), session=None):
         self.products = products
-        self.buf_len = 400*len(products) if buffer_len is None else buffer_len
+        self.buf_len = 300*len(products) if buffer_len is None else buffer_len
         self._private_session = not bool(session)
         if self._private_session:
             self.session = aiohttp.ClientSession()
         self.storer_rx, self.storer_tx = multiprocessing.Pipe(duplex=False)
-        self.storer_close = multiprocessing.Event()
-        self.storer = Process(target=MessageStorer(self.storer_close),
-                              name='pykamino-storer', args=(self.storer_rx,))
+        self.storer = MessageStorer(self.storer_rx)
 
     async def coro(self):
         """
@@ -38,7 +36,6 @@ class Client():
                 dict(zip(self.products, seqs)), self.buf_len)
             async for message in self.ws:
                 if message.type == aiohttp.WSMsgType.TEXT:
-                    # This is pure CPU, no need to await
                     parser.parse(message.json())
                     if parser.message_count() >= self.buf_len:
                         self.storer_tx.send(parser.messages.copy())
@@ -62,7 +59,7 @@ class Client():
             await self.ws.close()
         if self._private_session:
             await self.session.close()
-        self.storer_close.set()
+        self.storer.close()
         self.storer.join()
 
     async def _init_ws(self, url, *args, **kwargs):
@@ -74,6 +71,14 @@ class Client():
 
 
 class MessageParser:
+    """
+    Parse messages received from Coinbase Pro's websocket
+    and internally store them in categories:
+     - new trades
+     - new states
+     - changed states
+     - closed states
+    """
     def __init__(self, sequences, buffer_len=200):
         self.sequences = sequences
         self.buffer_len = buffer_len
@@ -215,22 +220,23 @@ class MessageParser:
             'ending_at': msg['time']})
 
 
-class MessageStorer():
+class MessageStorer(multiprocessing.Process):
     """
-    A callable class meant to be run in a subprocess.
-    `MessageStores` waits for a list of parsed messages and
+    A process that waits for a list of parsed messages and
     then stores them in parallel.
     """
 
-    def __init__(self, close_event):
-        self.close_event = close_event
+    def __init__(self, conn):
+        super().__init__()
+        self.stop_event = multiprocessing.Event()
+        self.conn = conn
         self.messages = {}
 
-    def __call__(self, conn):
-        while not self.close_event.is_set():
-            if conn.poll(timeout=0.5):
+    def run(self):
+        while not self.stop_event.is_set():
+            if self.conn.poll(timeout=0.5):
                 try:
-                    msgs = conn.recv()
+                    msgs = self.conn.recv()
                 except EOFError:
                     # The other end has been closed. There is reason
                     # To keep this process alive
@@ -239,6 +245,9 @@ class MessageStorer():
                     self.messages = msgs
                     self.store_messages()
                     self.messages = {}
+
+    def close(self):
+        self.stop_event.set()
 
     def store_messages(self):
         with database:
