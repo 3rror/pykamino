@@ -9,6 +9,12 @@ base_url = 'https://api.pro.coinbase.com/products/{}/book'
 
 
 async def store_snapshot(product='BTC-USD'):
+    """
+    Download and store the order book snapshot for a particular product.
+
+    Returns:
+        the sequence number for that product.
+    """
     with database.connection_context():
         snap = _Snapshot(product)
         await snap.sync_db()
@@ -19,6 +25,13 @@ class _Snapshot:
     """
     An order book snapshot, i.e. the orders waiting to be filled at a given
     time.
+
+    This class is not supported to be used directly and is, in fact,
+    just a collection of necessary functions. Its methods are to be
+    called in a specific order:
+     - download()
+     - close_old_states()
+     - insert_new_states()
     """
 
     def __init__(self, product='BTC-USD'):
@@ -76,12 +89,6 @@ class _Snapshot:
          .execute())
 
     def insert_new_states(self, clear=True):
-        """
-        Store the snapshot in the database.
-
-        This will also take care of closing orders that are not in the book
-        anymore.
-        """
         # Set the starting_at date for new states *after* closing the older ones.
         # This is to avoid inconsistency (previous ending_at > current starting_at)
         self.temp_snapshot.update(starting_at=datetime.now()).execute()
@@ -90,6 +97,10 @@ class _Snapshot:
 
 
 def create_temp_model(product):
+    """
+    Create a clone of the `OrderState` model class. This clone will
+    be materialized as a temporary table in the database, specific for a product.
+    """
     temp = type('TempSnapshot', (OrderState,), {})
     temp._meta.temporary = True
     temp._meta.table_name = f'tempsnapshot-{product}'
