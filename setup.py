@@ -1,4 +1,4 @@
-from setuptools import find_namespace_packages, setup
+from setuptools import setup
 
 import pykamino
 
@@ -14,7 +14,7 @@ setup(
     author_email='fabio.forni01@universitadipavia.it, gianluca.andreotti01@universitadipavia.it',
     license='Apache 2',
     package_dir={'': 'pykamino'},
-    packages=find_namespace_packages('pykamino'),
+    packages=[''],
     zip_safe=True,
     test_suite='tests',
     scripts=['bin/pykamino'],
