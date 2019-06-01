@@ -19,8 +19,8 @@ class Client():
         self.products = products
         self.buf_len = 300*len(products) if buffer_len is None else buffer_len
         self._private_session = not bool(session)
-        if self._private_session:
-            self.session = aiohttp.ClientSession()
+        if not self._private_session:
+            self.session = session
         self.storer_rx, self.storer_tx = multiprocessing.Pipe(duplex=False)
         self.storer = MessageStorer(self.storer_rx)
 
@@ -38,21 +38,13 @@ class Client():
                 if message.type == aiohttp.WSMsgType.TEXT:
                     parser.parse(message.json())
                     if parser.message_count() >= self.buf_len:
-                        self.storer_tx.send(parser.messages.copy())
-                        parser.clear()
+                        self._send_to_storer(parser)
                 elif message.type == aiohttp.WSMsgType.ERROR:
                     break
+        except asyncio.CancelledError:
+            return
         finally:
             await self.close()
-
-    def start(self):
-        """
-        Start the Client in a hassle-free way. If you need better control
-        over the event loop, make sure to use `coro()` instead of `start()` as
-        the former returns the underlying Client coroutine.
-        """
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(self.coro())
 
     async def close(self):
         if self.ws is not None:
@@ -65,9 +57,15 @@ class Client():
     async def _init_ws(self, url, *args, **kwargs):
         feed_conf = {'type': 'subscribe', 'channels': ['full'],
                      'product_ids': self.products}
+        if self._private_session:
+            self.session = aiohttp.ClientSession()
         ws = await self.session.ws_connect(url, *args, **kwargs)
         await ws.send_json(feed_conf)
         return ws
+
+    def _send_to_storer(self, parser):
+        self.storer_tx.send(parser.messages.copy())
+        parser.clear()
 
 
 class MessageParser:
@@ -79,6 +77,7 @@ class MessageParser:
      - changed states
      - closed states
     """
+
     def __init__(self, sequences, buffer_len=200):
         self.sequences = sequences
         self.buffer_len = buffer_len
@@ -234,17 +233,20 @@ class MessageStorer(multiprocessing.Process):
 
     def run(self):
         while not self.stop_event.is_set():
-            if self.conn.poll(timeout=0.5):
-                try:
-                    msgs = self.conn.recv()
-                except EOFError:
-                    # The other end has been closed. There is reason
-                    # To keep this process alive
-                    break
-                else:
-                    self.messages = msgs
-                    self.store_messages()
-                    self.messages = {}
+            try:
+                if self.conn.poll(timeout=0.5):
+                    try:
+                        msgs = self.conn.recv()
+                    except EOFError:
+                        # The other end has been closed. There is reason
+                        # To keep this process alive
+                        break
+                    else:
+                        self.messages = msgs
+                        self.store_messages()
+                        self.messages = {}
+            except KeyboardInterrupt:
+                self.close()
 
     def close(self):
         self.stop_event.set()
