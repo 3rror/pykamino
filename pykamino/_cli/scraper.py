@@ -8,11 +8,11 @@ products = cfg['global']['products']
 
 
 def run(*args, **kwargs):
+    loop = asyncio.get_event_loop()
+    client = Client(products=products, buffer_len=kwargs.get('buffer'))
+    task = loop.create_task(client.coro())
     try:
         init_db()
-        client = Client(products=products, buffer_len=kwargs.get('buffer'))
-        loop = asyncio.get_event_loop()
-        task = loop.create_task(client.coro())
         loop.run_forever()
     except KeyboardInterrupt:
         pass
