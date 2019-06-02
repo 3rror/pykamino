@@ -7,7 +7,7 @@ services:
       context: .
       dockerfile: Dockerfile
     volumes:
-      - .:/pykamino
+      - .:/app
   db:
     image: postgres
     ports:
