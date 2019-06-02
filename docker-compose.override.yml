@@ -1,7 +1,8 @@
 # These settings simplify the workflow during the develop phase by mounting the
 # host directory on top of the one inside Docker.
+# You can avoid these in production.
 
-# Unspecified settings are inherited from docker-compose.yml
+# Note: unspecified settings are inherited from docker-compose.yml
 
 version: '3'
 
