@@ -1,9 +1,8 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 import pykamino
 
-with open('requirements.txt', 'r') as req:
-    requirements = req.read().splitlines()
+requirements = open('requirements.txt').read().splitlines()
 
 setup(
     name=pykamino.__name__,
@@ -13,8 +12,7 @@ setup(
     author='Fabio Forni, Gianluca Andreotti',
     author_email='fabio.forni01@universitadipavia.it, gianluca.andreotti01@universitadipavia.it',
     license='Apache 2',
-    package_dir={'': 'pykamino'},
-    packages=[''],
+    packages=find_packages(),
     zip_safe=True,
     test_suite='tests',
     scripts=['bin/pykamino'],
