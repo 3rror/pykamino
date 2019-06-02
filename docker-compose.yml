@@ -16,10 +16,17 @@ services:
       - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_USER}
+
   pykamino:
     image: pykamino
     build: .
     depends_on:
       - db
+
     environment:
       - ON_DOCKER=1
+
+      # Replicate db env:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_USER}
