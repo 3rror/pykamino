@@ -72,4 +72,7 @@ feat_parser.add_argument(
 
 
 args = parser.parse_args()
-args.action(**vars(args))
+try:
+    args.action(**vars(args))
+except AttributeError:
+    parser.print_help()
