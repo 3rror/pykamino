@@ -1,12 +1,25 @@
 version: '3'
 
 services:
-  pykamino:
-    image: pykamino
-    build: .
   db:
     image: postgres:11
     volumes:
       - ./docker-data/database:/var/lib/postgresql/data
     ports:
       - 5432:5432
+    environment:
+      # See the .env file for the default configuration.
+
+      # These settings allow to create a database with a specified user, db and
+      # password. Remember that if the database is already created, these
+      # settings are ignored.
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_USER}
+  pykamino:
+    image: pykamino
+    build: .
+    depends_on:
+      - db
+    environment:
+      - ON_DOCKER=1
