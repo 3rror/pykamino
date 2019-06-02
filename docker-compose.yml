@@ -1,12 +1,12 @@
-version: '2.1'
+version: '3'
 
 services:
   pykamino:
     image: pykamino
     build: .
   db:
-    image: postgres
+    image: postgres:11
     volumes:
-      - ./tmp/db:/var/lib/postgresql/data
+      - ./docker-data/database:/var/lib/postgresql/data
     ports:
       - 5432:5432
