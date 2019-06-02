@@ -2,12 +2,13 @@ import unittest
 from abc import abstractmethod
 from datetime import datetime
 from datetime import timedelta as delta
+from datetime import timezone
 from decimal import Decimal
 
 from peewee import SqliteDatabase
+
 from pykamino.db import OrderState, Trade
-from pykamino.features import orders, trades
-from pykamino.features import TimeWindow
+from pykamino.features import TimeWindow, orders, trades
 from pykamino.features.orders import FeatureCalculator
 
 
@@ -35,7 +36,7 @@ class BaseTestCase(unittest.TestCase):
 
 class OrderFeatures(BaseTestCase):
 
-    START_DT = datetime(2010, 1, 30, 11, 00)
+    START_DT = datetime(2010, 1, 30, 11, 00, tzinfo=timezone.utc)
     UPDATE_DT = START_DT + delta(hours=3)
     CLOSE_DT = START_DT + delta(hours=5)
     N_ORDERS = 20
@@ -148,10 +149,12 @@ class OrderFeatures(BaseTestCase):
         self.assertEqual(self.fc.bid_depth(), 8)
 
     def test_ask_volume_weighted(self):
-        self.assertAlmostEqual(self.fc.ask_volume_weighted(), 0.13466247, delta=1e-8)
+        self.assertAlmostEqual(
+            self.fc.ask_volume_weighted(), 0.13466247, delta=1e-8)
 
     def test_bid_volume_weighted(self):
-        self.assertAlmostEqual(self.fc.bid_volume_weighted(), -0.00561498, delta=1e-8)
+        self.assertAlmostEqual(
+            self.fc.bid_volume_weighted(), -0.00561498, delta=1e-8)
 
     def test_ask_volume(self):
         self.assertEqual(self.fc.ask_volume(), 108.4)
@@ -161,7 +164,7 @@ class OrderFeatures(BaseTestCase):
 
 
 class TradeFeatures(BaseTestCase):
-    START_DT = datetime(2010, 1, 30, 11, 00)
+    START_DT = datetime(2010, 1, 30, 11, 00, tzinfo=timezone.utc)
     N_TRADES = 20
 
     @property
