@@ -1,8 +1,7 @@
-FROM python:3.6
+FROM python:3.6.8-slim-stretch
 
-LABEL Name=pykamino Version=0.0.1
+LABEL Name=pykamino Version=0.9.0
 
-RUN mkdir /app
-WORKDIR /app
-ADD . /app
-RUN python3 -m pip install .
+WORKDIR /tmp
+COPY . .
+RUN pip install .
