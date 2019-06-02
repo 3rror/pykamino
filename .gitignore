@@ -6,7 +6,6 @@ __pycache__/
 *$py.class
 
 # Environments and metadata
-.env
 .venv
 env/
 venv/
