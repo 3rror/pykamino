@@ -1,0 +1,11 @@
+# These settings simplify the workflow during the develop phase by mounting the
+# host directory on top of the one inside Docker.
+
+# Unspecified settings are inherited from docker-compose.yml
+
+version: '3'
+
+services:
+  pykamino:
+    volumes:
+      - .:/app
