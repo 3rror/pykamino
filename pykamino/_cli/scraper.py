@@ -13,9 +13,8 @@ def run(*args, **kwargs):
     task = loop.create_task(client.coro())
     try:
         init_db()
-        loop.run_forever()
+        loop.run_until_complete(task)
     except KeyboardInterrupt:
         pass
     finally:
         task.cancel()
-        loop.stop()

@@ -42,6 +42,7 @@ class Client():
                 elif message.type == aiohttp.WSMsgType.ERROR:
                     break
         except asyncio.CancelledError:
+            # If we got CancelledError, don't freak out! It's all OK
             return
         finally:
             await self.close()
