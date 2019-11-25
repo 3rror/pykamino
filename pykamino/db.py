@@ -6,13 +6,13 @@ from os import cpu_count
 
 import iso8601
 from peewee import (CharField, Check, CompositeKey, DateTimeField,
-                    DecimalField, Model, Proxy, SmallIntegerField, UUIDField)
+                    DecimalField, Model, DatabaseProxy, SmallIntegerField, UUIDField)
 from playhouse.pool import (PooledMySQLDatabase, PooledPostgresqlDatabase,
                             PooledSqliteDatabase)
 
 # We want the database to be dinamically defined, so that we can support
 # different Dbms's. In order to do that, we first declare a placeholder.
-database = Proxy()
+database = DatabaseProxy()
 
 
 class Dbms(Enum):
@@ -38,15 +38,15 @@ def db_factory(dbms: Dbms, db_name, user=None, psw=None, host=None, port=None):
             'max_connections': ceil(cpu_count() / 2) if cpu_count() > 2 else 2
             }
     if dbms == Dbms.MYSQL:
-        db = PooledMySQLDatabase(**args)
+        real_db = PooledMySQLDatabase(**args)
     elif dbms == Dbms.POSTGRES:
-        db = PooledPostgresqlDatabase(**args)
+        real_db = PooledPostgresqlDatabase(**args)
     elif dbms == Dbms.SQLITE:
-        db = PooledSqliteDatabase(db_name)
-    database.initialize(db)
-    with database:
-        database.create_tables(BaseModel.__subclasses__())
-    return database
+        real_db = PooledSqliteDatabase(db_name)
+    database.initialize(real_db)
+    database.create_tables(BaseModel.__subclasses__())
+    database.manual_close()
+    return real_db
 
 
 CurrencyField = partial(DecimalField, max_digits=18, decimal_places=8)
