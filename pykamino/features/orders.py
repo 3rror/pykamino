@@ -8,6 +8,9 @@ from pykamino.db import OrderState
 from pykamino.features import TimeWindow, sliding_time_windows
 from pykamino.features.decorators import rounded
 
+# FIXME: pykamino.features.trades is a function-based module
+# whereas this one is class-based. Maybe it's a better idea to unify
+# the two paradigms.
 
 def memoize(func):
     """
@@ -23,7 +26,6 @@ def memoize(func):
             self._cache[func] = func(self, *args, **kwargs)
         return self._cache[func]
     return wrapper
-
 
 class FeatureCalculator():
     def __init__(self, orders, timestamp):
