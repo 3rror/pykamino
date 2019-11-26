@@ -207,6 +207,10 @@ class FeatureCalculator():
 
 
 def fetch_states(interval, product='BTC-USD'):
+    """
+    Fetch order states that are closed, or still open in the order book,
+    within the specified interval.
+    """
     orders = (
         OrderState
         .select(
@@ -227,8 +231,10 @@ def extract(interval: TimeWindow, res='2min', products=('BTC-USD',)):
     with multiprocessing.Pool() as pool:
         for product in products:
             windows = sliding_time_windows(interval, res, stride=100,
-                                           chunksize=50)
-            output = pool.imap(_extract, windows)
+                                           chunksize=10000)
+            # TODO: both `chunksize`s should be dynamic, depending
+            # on the interval length and number of rows in the database.
+            output = pool.imap(_extract, windows, chunksize=2)
             features[product] = list(itertools.chain(*output))
     # TODO: Support multiple currencies. For now we consider only BTC
     return features['BTC-USD']

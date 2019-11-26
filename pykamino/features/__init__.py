@@ -12,6 +12,7 @@ def sliding_time_windows(interval: TimeWindow, freq, stride=100, chunksize=8):
         stride (int, optional):
             Defaults to 100. Offset of each time windows from the previous
             one, expressed as percentage of the resolution.
+        chunksize (int, optional): number of windows returned for each function call
 
     Raises:
         ValueError:
@@ -21,7 +22,7 @@ def sliding_time_windows(interval: TimeWindow, freq, stride=100, chunksize=8):
 
     Returns:
         Generator[TimeWindow]:
-            a generator producing tuples like (window_start, window_end)
+            a generator producing a list of tuples like (window_start, window_end)
     """
     # A stride of 0 doesn't make sense because it would mean a 100% overlap
     # creating an infinite loop
