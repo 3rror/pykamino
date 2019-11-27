@@ -237,13 +237,12 @@ class MessageStorer(multiprocessing.Process):
             try:
                 if self.conn.poll(timeout=0.5):
                     try:
-                        msgs = self.conn.recv()
+                        self.messages = self.conn.recv()
                     except EOFError:
                         # The other end has been closed. There is reason
                         # To keep this process alive
                         break
                     else:
-                        self.messages = msgs
                         self.store_messages()
                         self.messages = {}
             except KeyboardInterrupt:
@@ -262,10 +261,6 @@ class MessageStorer(multiprocessing.Process):
                 self._update_states()
             if self.messages['closed_states']:
                 self._close_states()
-
-    def _clean_parsed_msgs(self):
-        for key in self.messages:
-            self.messages[key].clear()
 
     def _add_new_trades(self):
         (Trade
