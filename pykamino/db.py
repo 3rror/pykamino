@@ -1,21 +1,22 @@
 from datetime import datetime
-from enum import Enum
 from functools import partial
-from math import ceil
-from os import cpu_count
+import enum
+import math
+import os
 
+from playhouse import pool
 import iso8601
-from peewee import (CharField, Check, CompositeKey, DateTimeField,
-                    DecimalField, Model, DatabaseProxy, SmallIntegerField, UUIDField)
-from playhouse.pool import (PooledMySQLDatabase, PooledPostgresqlDatabase,
-                            PooledSqliteDatabase)
+import peewee
 
 # We want the database to be dinamically defined, so that we can support
 # different Dbms's. In order to do that, we first declare a placeholder.
-database = DatabaseProxy()
+database = peewee.DatabaseProxy()
 
 
-class Dbms(Enum):
+class Dbms(enum.Enum):
+    """
+    An enum repesenting a set of supported DBMSs.
+    """
     MYSQL = 'mysql'
     POSTGRES = 'postgres'
     SQLITE = 'sqlite'
@@ -35,52 +36,67 @@ def db_factory(dbms: Dbms, db_name, user=None, psw=None, host=None, port=None):
             'port': port,
             # We don't want too many connections, but we want
             # at least two (for fast feature extraction)
-            'max_connections': ceil(cpu_count() / 2) if cpu_count() > 2 else 2
-            }
+            'max_connections': math.ceil(os.cpu_count() / 2) if os.cpu_count() > 2 else 2}
     if dbms == Dbms.MYSQL:
-        real_db = PooledMySQLDatabase(**args)
+        real_db = pool.PooledMySQLDatabase(**args)
     elif dbms == Dbms.POSTGRES:
-        real_db = PooledPostgresqlDatabase(**args)
+        real_db = pool.PooledPostgresqlDatabase(**args)
     elif dbms == Dbms.SQLITE:
-        real_db = PooledSqliteDatabase(db_name)
+        real_db = pool.PooledSqliteDatabase(db_name)
     database.initialize(real_db)
     database.create_tables(BaseModel.__subclasses__())
     database.manual_close()
     return real_db
 
 
-CurrencyField = partial(DecimalField, max_digits=18, decimal_places=8)
+CurrencyField = partial(peewee.DecimalField, max_digits=18, decimal_places=8)
+CurrencyField.__doc__ = """A model corresponding to a fixed-point number with
+8 decimal places and 10 digits for the integer part."""
 
 
-class Iso8601DateTimeField(DateTimeField):
+class Iso8601DateTimeField(peewee.DateTimeField):
+    """
+    A `peewee.DateTimeField`, but compliant with the ISO8601 standard.
+    """
     # This is needed for SQlite3 only
     formats = ['%Y-%m-%d %H:%M:%f']
 
+    # Overridden
     def adapt(self, value):
-        """
-        adapt overrides the original method so that it's possible to parse the ISO8601
-        format. This format in fact is not parseable with the usual format strings
-        but it needs specific logic to deal with implicit zeroes.
-        """
         try:
             return iso8601.parse_date(value)
         except iso8601.ParseError:
             return super().adapt(value)
 
 
-class EnumField(SmallIntegerField):
+class EnumField(peewee.SmallIntegerField):
+    """
+    A `peewee.SmallIntegerField` that maps an integer number to a string, and vice-versa.
+    """
+
     def __init__(self, keys, *args, **kwargs):
         super().__init__(null=False, *args, **kwargs)
-        self.enum = Enum('InnerEnum', ' '.join(keys))
+        self.enum = enum.Enum('InnerEnum', ' '.join(keys))
 
+    # Overridden
     def db_value(self, value):
         return self.enum[value].value
 
+    # Overridden
     def python_value(self, value):
         return self.enum(value).name
 
 
-class BaseModel(Model):
+CryptoField = partial(EnumField, keys=('BTC-USD', 'ETH-USD'))
+CryptoField.__doc__ = """An EnumField for "BTC-USD" and "ETH-USD"."""
+
+
+class BaseModel(peewee.Model):
+    """
+    A base model for all the ORM models used in pykamino.
+    You should extend this class if you want to define models
+    using the same `pykamino` database.
+    """
     class Meta:
         database = database
         legacy_table_names = False
@@ -88,26 +104,29 @@ class BaseModel(Model):
 
 class Trade(BaseModel):
     """
-    Represents the table of trades.
+    Trade Represents the table of trades.
 
-    Note: A trade is a match in price of two orders:
-    a "buy" one and a "sell" one.
+    Note:
+        A trade is a match in price of two orders: a "buy" one and a "sell" one.
     """
     side = EnumField(keys=('sell', 'buy'))
     amount = CurrencyField()
-    product = EnumField(keys=('BTC-USD', 'ETH-USD'))
+    product = CryptoField()
     price = CurrencyField()
     time = Iso8601DateTimeField()
 
     class Meta:
         table_name = 'trades'
-        # Note: the ending comma is required
         indexes = ((('product', 'time'), False),)
 
 
 class OrderState(BaseModel):
-    order_id = UUIDField()
-    product = EnumField(keys=('BTC-USD', 'ETH-USD'))
+    """
+    OrderState represents the table of order states, i.e. the entries
+    in the order book.
+    """
+    order_id = peewee.UUIDField()
+    product = CryptoField()
     side = EnumField(keys=('ask', 'bid'))
     price = CurrencyField()
     amount = CurrencyField()
@@ -115,8 +134,7 @@ class OrderState(BaseModel):
     ending_at = Iso8601DateTimeField(null=True)
 
     class Meta:
-        primary_key = CompositeKey('order_id', 'starting_at')
+        primary_key = peewee.CompositeKey('order_id', 'starting_at')
         table_name = 'order_states'
-        # Note: the ending comma is required
         indexes = ((('product', 'ending_at', 'starting_at'), False),)
-        constraints = [Check('starting_at < ending_at')]
+        constraints = [peewee.Check('starting_at < ending_at')]
