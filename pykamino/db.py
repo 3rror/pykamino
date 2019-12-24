@@ -54,21 +54,6 @@ CurrencyField.__doc__ = """A model corresponding to a fixed-point number with
 8 decimal places and 10 digits for the integer part."""
 
 
-class Iso8601DateTimeField(peewee.DateTimeField):
-    """
-    A `peewee.DateTimeField`, but compliant with the ISO8601 standard.
-    """
-    # This is needed for SQlite3 only
-    formats = ['%Y-%m-%d %H:%M:%f']
-
-    # Overridden
-    def adapt(self, value):
-        try:
-            return iso8601.parse_date(value)
-        except iso8601.ParseError:
-            return super().adapt(value)
-
-
 class EnumField(peewee.SmallIntegerField):
     """
     A `peewee.SmallIntegerField` that maps an integer number to a string, and vice-versa.
@@ -113,7 +98,7 @@ class Trade(BaseModel):
     amount = CurrencyField()
     product = CryptoField()
     price = CurrencyField()
-    time = Iso8601DateTimeField()
+    time = peewee.DateTimeField()
 
     class Meta:
         table_name = 'trades'
@@ -130,8 +115,8 @@ class OrderState(BaseModel):
     side = EnumField(keys=('ask', 'bid'))
     price = CurrencyField()
     amount = CurrencyField()
-    starting_at = Iso8601DateTimeField(default=datetime.utcnow)
-    ending_at = Iso8601DateTimeField(null=True)
+    starting_at = peewee.DateTimeField(default=datetime.utcnow)
+    ending_at = peewee.DateTimeField(null=True)
 
     class Meta:
         primary_key = peewee.CompositeKey('order_id', 'starting_at')

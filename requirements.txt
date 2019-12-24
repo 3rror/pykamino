@@ -1,6 +1,5 @@
 aiohttp~=3.5.0
 appdirs
-iso8601
 pandas~=0.24.0
 peewee~=3.9.0
 toml

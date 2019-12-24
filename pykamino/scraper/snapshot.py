@@ -45,7 +45,7 @@ class OrderBook:
         async with aiohttp.request('GET', base_url.format(self.product), params={'level': 3},
                                    raise_for_status=True, compress=True) as response:
             cbpro_snap = await response.json()
-        self.timestamp = datetime.utcnow()
+        self.timestamp = datetime.now()
         self.sequence = cbpro_snap['sequence']
         del cbpro_snap['sequence']
         self.orders = cbpro_snap
