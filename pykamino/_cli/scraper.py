@@ -10,7 +10,7 @@ products = cfg['global']['products']
 def run(*args, **kwargs):
     loop = asyncio.get_event_loop()
     client = Client(products=products, buffer_len=kwargs.get('buffer'))
-    task = loop.create_task(client.coro())
+    task = loop.create_task(client.start())
     try:
         init_db()
         loop.run_until_complete(task)
