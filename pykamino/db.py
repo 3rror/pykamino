@@ -130,7 +130,7 @@ class OrderState(BaseModel):
     side = EnumField(keys=('ask', 'bid'))
     price = CurrencyField()
     amount = CurrencyField()
-    starting_at = Iso8601DateTimeField(default=datetime.now)
+    starting_at = Iso8601DateTimeField(default=datetime.utcnow)
     ending_at = Iso8601DateTimeField(null=True)
 
     class Meta:
