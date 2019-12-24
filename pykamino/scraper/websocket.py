@@ -9,7 +9,7 @@ import iso8601
 from peewee import Case
 
 from pykamino.db import OrderState, Trade, database
-from pykamino.scraper.snapshot import store_snapshot
+from pykamino.scraper import snapshot
 
 coinbase_feed = 'wss://ws-feed.pro.coinbase.com'
 
@@ -31,7 +31,7 @@ class Client():
         try:
             self.storer.start()
             self.ws, *seqs = await asyncio.gather(self._init_ws(coinbase_feed),
-                                                  *[store_snapshot(p) for p in self.products])
+                                                  *[snapshot.store(p) for p in self.products])
             parser = MessageParser(
                 dict(zip(self.products, seqs)), self.buf_len)
             async for message in self.ws:

@@ -1,107 +1,127 @@
 from datetime import datetime
+from typing import Any, Dict, Iterator, List
 
-import aiohttp
 from peewee import fn
-
 from pykamino.db import OrderState, database
+import aiohttp
 
 base_url = 'https://api.pro.coinbase.com/products/{}/book'
 
 
-async def store_snapshot(product='BTC-USD'):
+async def store(product='BTC-USD') -> int:
     """
     Download and store the order book snapshot for a particular product.
+
+    This is a helper function to download and save a snapshot at once.
+    For a more fine-grained behavior, consider to use the `Snapshot` and `Storer` classes alone.
 
     Returns:
         the sequence number for that product.
     """
-    with database.connection_context():
-        snap = _Snapshot(product)
-        await snap.sync_db()
-        return snap.sequence
+    snap = OrderBook(product)
+    await snap.download()
+    storer = Storer(snap)
+    with database:
+        storer.close_old_states()
+        storer.insert_new_states()
+    return snap.sequence
 
 
-class _Snapshot:
-    """
-    An order book snapshot, i.e. the orders waiting to be filled at a given
-    time.
-
-    This class is not supported to be used directly and is, in fact,
-    just a collection of necessary functions. Its methods are to be
-    called in a specific order:
-     - download()
-     - close_old_states()
-     - insert_new_states()
-    """
-
+class OrderBook:
     def __init__(self, product='BTC-USD'):
         self.product = product
-        self.sequence = -1
-        self.temp_snapshot = create_temp_model(product)
-        self.temp_snapshot.create_table(safe=False)
+        self.sequence = None
+        self.timestamp = None
+        self.orders = None
 
-    async def sync_db(self):
-        await self.download()
-        self.close_old_states()
-        self.insert_new_states()
+    async def download(self) -> int:
+        """
+        Download the current order book from Coinbase Pro. If no error occurs, the `sequence`
+        and `timestamp` values will be assigned.
 
-    async def download(self):
-        async with aiohttp.request('GET', base_url.format(self.product), params={'level': 3}) as response:
-            assert response.status // 100 == 2
+        Returns:
+            The sequence number.
+        """
+        async with aiohttp.request('GET', base_url.format(self.product), params={'level': 3},
+                                   raise_for_status=True, compress=True) as response:
             cbpro_snap = await response.json()
+        self.timestamp = datetime.utcnow()
         self.sequence = cbpro_snap['sequence']
-        snap_list = []
-        for side in ('bids', 'asks'):
-            for order_msg in cbpro_snap[side]:
-                snap_list.append({
-                    'price': order_msg[0],
-                    'amount': order_msg[1],
-                    'order_id': order_msg[2],
-                    'product': self.product,
-                    # Remove the trailing 's' for plural nouns
-                    # For example: asks -> ask,
-                    'side': side[:-1]})
-        self.temp_snapshot.insert_many(snap_list).execute()
+        del cbpro_snap['sequence']
+        self.orders = cbpro_snap
         return self.sequence
 
-    def close_old_states(self):
-        still_open_condition = (
-            (OrderState.order_id == self.temp_snapshot.order_id) &
-            (OrderState.amount == self.temp_snapshot.amount))
-        states_still_open = self.temp_snapshot.select().where(still_open_condition)
+    def describe_order(self, order: List[Any], side: str) -> Dict[str, Any]:
+        return {'price': order[0],
+                'amount': order[1],
+                'order_id': order[2],
+                'product': self.product,
+                'side': side}
 
-        (OrderState
-         .update(ending_at=datetime.now())
-         .where(~fn.EXISTS(states_still_open) &
-                OrderState.ending_at.is_null() &
-                (OrderState.product == self.product))
-         .execute())
+    def bids(self) -> Iterator[Dict[str, Any]]:
+        """
+        If `download()` has been called, get all the "bid" orders.
 
-        # Remove from TempSnapshot orders that didn't change.
-        # We don't need to store them again.
-        (self.temp_snapshot
-         .delete()
-         .where(self.temp_snapshot.order_id.in_(
-             self.temp_snapshot
-             .select(self.temp_snapshot.order_id)
-             .join(OrderState, on=(self.temp_snapshot.order_id == OrderState.order_id))
-             .where(self.temp_snapshot.amount == OrderState.amount)))
-         .execute())
+        Returns:
+            An iterator over the "bid" orders.
+        """
+        return (self.describe_order(order, 'bid') for order in self.orders['bids'])
 
-    def insert_new_states(self, clear=True):
-        # Set the starting_at date for new states *after* closing the older ones.
-        # This is to avoid inconsistency (previous ending_at > current starting_at)
-        self.temp_snapshot.update(starting_at=datetime.now()).execute()
-        OrderState.insert_from(self.temp_snapshot.select(),
+    def asks(self) -> Iterator[Dict[str, Any]]:
+        """
+        If `download()` has been called, get all the "ask" orders.
+
+        Returns:
+            An iterator over the "ask" orders.
+        """
+        return (self.describe_order(order, 'ask') for order in self.orders['asks'])
+
+    def __iter__(self) -> Iterator[Dict[str, Any]]:
+        yield from self.bids()
+        yield from self.asks()
+
+
+class Storer:
+    """
+    Utility to save a downloaded OrderBook to pykamino's database.
+    """
+    def __init__(self, order_book: OrderBook):
+        def get_temp_model():
+            temp = type('TempOrderState', (OrderState,), {})
+            temp._meta.temporary = True
+            temp._meta.table_name = f'tempbook-{id(self)}'
+            return temp
+        self.timestamp = order_book.timestamp
+        self.product = order_book.product
+        self.temp_order_state = get_temp_model()
+        self.temp_order_state.create_table()
+        self.temp_order_state.insert_many(order_book).execute()
+
+    def close_old_states(self) -> None:
+        with database:
+            states_still_open = (self.temp_order_state
+                                 .select()
+                                 .where(((OrderState.order_id == self.temp_order_state.order_id)
+                                         & (OrderState.amount == self.temp_order_state.amount))))
+            (OrderState
+             .update(ending_at=self.timestamp)
+             .where(~fn.EXISTS(states_still_open) &
+                    OrderState.ending_at.is_null() &
+                    (OrderState.product == self.product))
+             .execute())
+
+            # Remove from TempSnapshot orders that didn't change, so that
+            # We don't need to store them again.
+            (self.temp_order_state
+             .delete()
+             .where(self.temp_order_state.order_id.in_(
+                 self.temp_order_state
+                 .select(self.temp_order_state.order_id)
+                 .join(OrderState, on=(self.temp_order_state.order_id == OrderState.order_id))
+                 .where(self.temp_order_state.amount == OrderState.amount)))
+             .execute())
+
+    def insert_new_states(self, clear=True) -> None:
+        self.temp_order_state.update(starting_at=self.timestamp).execute()
+        OrderState.insert_from(self.temp_order_state.select(),
                                OrderState._meta.fields).execute()
-
-
-def create_temp_model(product):
-    """
-    Create a clone of the `OrderState` model class. This clone will
-    be materialized as a temporary table in the database, specific for a product.
-    """
-    temp = type('TempSnapshot', (OrderState,), {})
-    temp._meta.temporary = True
-    temp._meta.table_name = f'tempsnapshot-{product}'
-    return temp
