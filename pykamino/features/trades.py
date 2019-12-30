@@ -1,234 +1,208 @@
-import itertools
+from decimal import Decimal
+from functools import partial
+from typing import Any, Dict, List, Optional, Tuple
 import multiprocessing
 
-import pandas
-
-from pykamino.db import Trade
+from pykamino.db import database, Trade
 from pykamino.features import TimeWindow, sliding_time_windows
 from pykamino.features.decorators import rounded
+import numpy
+import pandas
 
 
-# Feature calculation #
-
-def _buys(trades):
-    """Return trades of type "buy" in the specified dataframe.
+def buys(trades: pandas.DataFrame) -> pandas.DataFrame:
+    """
+    Get trades of type "buy".
 
     Args:
-        trades (pandas.DataFrame): dataframe of trades
-
-    Returns:
-        pandas.DataFrame: trades of type "buy"
+        trades: dataFrame of trades
     """
     return trades[trades.side == 'buy']
 
 
-def _sells(trades):
-    """Return trades of type "sell" in the specified dataframe.
+def sells(trades: pandas.DataFrame) -> pandas.DataFrame:
+    """
+    Get trades of type "sell".
 
     Args:
-        trades (pandas.DataFrame): dataframe of trades
-
-    Returns:
-        pandas.DataFrame: trades of type "sell"
+        trades: dataFrame of trades
     """
     return trades[trades.side == 'sell']
 
 
-def _latest_trade(trades):
-    """Return the most recent trade in the dataframe.
+def latest_trade(trades: pandas.DataFrame) -> pandas.Series:
+    """
+    Get the most recent trade.
 
     Args:
-        trades (pandas.DataFrame): dataframe of trades
+        trades: dataFrame of trades
 
-    Returns:
-        [pandas.Series]: most recent trade
+    Raises:
+        ValueError: if `trades` is empty
     """
     return trades.loc[trades.time.idxmax()]
 
 
-def _oldest_trade(trades):
-    """Return the oldest trade in the dataframe.
+def oldest_trade(trades) -> pandas.Series:
+    """
+    Get the oldest trade in the pandas.DataFrame.
 
     Args:
-        trades (pandas.DataFrame): dataframe of trades
+        trades: dataFrame of trades
 
-    Returns:
-        [pandas.Series]: oldest trade
+    Raises:
+        ValueError: if `trades` is empty
     """
     return trades.loc[trades.time.idxmin()]
 
 
 @rounded
-def mean_price(trades):
-    """Return the mean price of all the trades in the dataframe.
+def mean_price(trades: pandas.DataFrame) -> numpy.float64:
+    """
+    Get the mean price of all the trades.
 
     Args:
-        trades (pandas.DataFrame): dataframe of trades
-
-    Raises:
-        ValueError: raised when trades dataframe is empty
-
-    Returns:
-        numpy.float64: mean price, rounded to 8 digits
+        trades: dataFrame of trades
     """
-    if trades.empty:
-        raise ValueError(
-            'Cannot calculate the mean price on an empty dataframe.')
     return trades.price.mean()
 
 
 @rounded
-def price_std(trades):
-    """Return the standard deviation of the prices of the trades.
+def price_std(trades: pandas.DataFrame) -> numpy.float64:
+    """
+    Get the standard deviation of the price.
 
     Args:
-        trades (pandas.DataFrame): dataframe of trades
-
-    Raises:
-        ValueError: raised when trades dataframe is empty
-
-    Returns:
-        numpy.float64: standard deviation, rounded to 8 digits
+        trades: dataFrame of trades
     """
-    if trades.empty:
-        raise ValueError(
-            'Cannot calculate price standard deviation on an empty dataframe.')
     return trades.price.astype(float).std()
 
 
-def buy_count(trades):
-    """Return the number of "buy" trades in the dataframe.
+def buy_count(trades: pandas.DataFrame) -> int:
+    """
+    Get the number of "buy" trades.
 
     Args:
-        trades (pandas.DataFrame): dataframe of trades
-
-    Returns:
-        int: number of "buy" trades
+        trades: dataFrame of trades
     """
-    return len(_buys(trades))
+    return len(buys(trades))
 
 
-def sell_count(trades):
-    """Return the number of "sell" trades in the dataframe.
+def sell_count(trades: pandas.DataFrame) -> int:
+    """
+    Get the number of "sell" trades.
 
     Args:
-        trades (pandas.DataFrame): dataframe of trades
-
-    Returns:
-        int: number of "sell" trades
+        trades: dataFrame of trades
     """
-    return len(_sells(trades))
+    return len(sells(trades))
 
 
 @rounded
-def total_buy_volume(trades):
-    """Return the total amount bought in the dataframe.
+def total_buy_volume(trades: pandas.DataFrame) -> numpy.float64:
+    """
+    Get the total amount of crypto bought.
 
     Args:
-        trades (pandas.DataFrame): dataframe of trades
-
-    Returns:
-        numpy.float64: total amount bought
+        trades: dataFrame of trades
     """
-    return _buys(trades).amount.sum()
+    return buys(trades).amount.sum()
 
 
 @rounded
-def total_sell_volume(trades):
-    """Return the total amount sold in the dataframe.
+def total_sell_volume(trades: pandas.DataFrame) -> numpy.float64:
+    """
+    Get the total amount of crypto sold.
 
     Args:
-        trades (pandas.DataFrame): dataframe of trades
-
-    Returns:
-        numpy.float64: total amount sold
+        trades: dataFrame of trades
     """
-    return _sells(trades).amount.sum()
+    return sells(trades).amount.sum()
 
 
 @rounded
-def price_movement(trades):
-    """Return the difference between the oldest and the most recent trade
-    price in the dataframe.
+def price_movement(trades: pandas.DataFrame) -> Optional[Decimal]:
+    """
+    Get the price difference between the oldest trade and the most recent one.
 
     Args:
-        trades (pandas.DataFrame): dataframe of trades
+        trades: dataFrame of trades
 
     Raises:
-        ValueError: raised when trades dataframe is empty
-
-    Returns:
-        decimal.Decimal: price movement, rounded to 8 digits
+        ValueError: if `trades` is empty
     """
-    if trades.empty:
-        raise ValueError(
-            'Cannot calculate price movement on an empty dataframe.')
-    return _oldest_trade(trades).price - _latest_trade(trades).price
+    return oldest_trade(trades).price - latest_trade(trades).price
 
 
-# Feature extraction from database #
-
-def fetch_trades(interval: TimeWindow, product='BTC-USD'):
-    """Return a dataframe of all the orders in the specified time window.
+def fetch_trades(interval: TimeWindow, product: str = 'BTC-USD'):
+    """
+    Get a pandas.DataFrame of all the trades in the specified time window.
 
     Args:
-        interval (TimeWindow): time window from which to fetch trades
-        product (str, optional): currency to consider. Defaults to "BTC-USD"
+        interval: time window from which to fetch trades
+        product: currency to consider
 
     Returns:
-        pandas.DataFrame: orders in the specified time window
+        trades in the specified time window
     """
     trades = (Trade
               .select()
               .where((Trade.product == product) &
-                     Trade.time.between(*interval))
-              .namedtuples())
+                     Trade.time.between(*interval)).namedtuples())
     return pandas.DataFrame(trades)
 
 
-def features_from_subset(trades, interval: TimeWindow):
-    """
-    TODO: Add doc
-    """
+def compute_all_features(trades, interval: TimeWindow):
     try:
         trades_slice = trades[trades.time.between(*interval)]
-        return {
-            'buy_count': buy_count(trades_slice),
-            'sell_count': sell_count(trades_slice),
-            'total_buy_volume': total_buy_volume(trades_slice),
-            'total_sell_volume': total_sell_volume(trades_slice),
-            'price_mean': mean_price(trades_slice),
-            'price_std': price_std(trades_slice),
-            'price_movement': price_movement(trades_slice),
-            'start_time': interval.start,
-            'end_time': interval.end
-        }
-    except (ValueError, AttributeError):
-        return {
-            'buy_count': 0,
-            'sell_count': 0,
-            'total_buy_volume': 0,
-            'total_sell_volume': 0,
-            'price_mean': None,
-            'price_std': None,
-            'price_movement': None,
-            'start_time': interval.start,
-            'end_time': interval.end
-        }
+        return {'buy_count': buy_count(trades_slice),
+                'sell_count': sell_count(trades_slice),
+                'total_buy_volume': total_buy_volume(trades_slice),
+                'total_sell_volume': total_sell_volume(trades_slice),
+                'price_mean': mean_price(trades_slice),
+                'price_std': price_std(trades_slice),
+                'price_movement': price_movement(trades_slice),
+                'start_time': interval.start,
+                'end_time': interval.end}
+    except (AttributeError, ValueError):
+        return {'buy_count': None,
+                'sell_count': None,
+                'total_buy_volume': None,
+                'total_sell_volume': None,
+                'price_mean': None,
+                'price_std': None,
+                'price_movement': None,
+                'start_time': interval.start,
+                'end_time': interval.end}
 
 
-def extract(interval: TimeWindow, res='2min', stride=10, products=('BTC-USD')):
+def extraction_worker(intervals: List[TimeWindow], product='BTC-USD'):
+    range = TimeWindow(intervals[0].start, intervals[-1].end)
+    trades = fetch_trades(range, product=product)
+    return [compute_all_features(trades, w) for w in intervals]
+
+
+def extract(interval: TimeWindow, res: str = '2min', stride: int = 10,
+            products: Tuple[str, ...] = ('BTC-USD',)) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Extract all the trade features, fetching data from the database.
+    The features will be computed for every time period of length `res`.
+    Args:
+        interval: a time range
+        res: the feature "resolution", that is the length of a time window
+        stride: overlap of a window from the preceding one
+        products: some "fiat-crypto" couples of which to compute features
+
+    Returns:
+        A dictionary whose keys are `products` and values are a list of another dicts.
+        Those dicts have feature names as keys.
+    """
     features = {}
     res = pandas.to_timedelta(res)
     with multiprocessing.Pool() as pool:
         for product in products:
-            output = pool.imap(_extract,
-                               sliding_time_windows(interval, res, stride))
-            features[product] = list(itertools.chain(*output))
-    return features['BTC-USD']
-
-
-def _extract(intervals: [TimeWindow]):
-    range = TimeWindow(intervals[0].start, intervals[-1].end)
-    trades = fetch_trades(range)
-    return [features_from_subset(trades, w) for w in intervals]
+            worker = partial(extraction_worker, product=product)
+            # Trades don't require much memory, we can affort to use map()
+            features[product] = pool.map(worker,
+                                         sliding_time_windows(interval, res, stride))
+    return features
