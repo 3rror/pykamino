@@ -1,5 +1,5 @@
-aiohttp~=3.5.0
+aiohttp~=3.6.0
 appdirs
-pandas~=0.24.0
-peewee~=3.9.0
+pandas~=0.25.0
+peewee~=3.13.0
 toml
