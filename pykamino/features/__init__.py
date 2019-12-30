@@ -1,28 +1,34 @@
-from collections import namedtuple
+from datetime import datetime, timedelta
+from typing import Generator, List, NamedTuple
 
-TimeWindow = namedtuple('TimeWindow', 'start, end')
+
+class TimeWindow(NamedTuple):
+    start: datetime
+    end: datetime
 
 
-def sliding_time_windows(interval: TimeWindow, freq, stride=100, chunksize=8):
-    """Return a generator of sliding time windows.
+def sliding_time_windows(interval: TimeWindow, freq: timedelta,
+                         stride: int = 100,
+                         chunksize: int = 8) -> Generator[List[TimeWindow], None, None]:
+    """
+    Return a generator of sliding time windows.
 
     Args:
-        interval (TimeWindow): upper and lower bounds
-        freq (datetime.timedelta): resolution of each windows
-        stride (int, optional):
-            Defaults to 100. Offset of each time windows from the previous
-            one, expressed as percentage of the resolution.
-        chunksize (int, optional): number of windows returned for each function call
+        interval: upper and lower bounds
+        freq: resolution of each windows
+        stride:
+            Distance in time between a TimeWindow and another, expressed
+            as percentage of freq. A value of 100 means ther's no overlap.
+        chunksize: number of windows returned for each function call
 
     Raises:
         ValueError:
             if stride is not a value greater than 0 and less or equal to 100
         ValueError:
-            if frequency is greater than the period between start and end
+            if freq is greater than the period between start and end
 
     Returns:
-        Generator[TimeWindow]:
-            a generator producing a list of tuples like (window_start, window_end)
+        generator producing a list of TimeWindow
     """
     # A stride of 0 doesn't make sense because it would mean a 100% overlap
     # creating an infinite loop
@@ -32,7 +38,7 @@ def sliding_time_windows(interval: TimeWindow, freq, stride=100, chunksize=8):
 
     start = interval.start
     end = interval.end
-    if (end - start) < freq:
+    if (interval.end - start) < freq:
         raise ValueError(
             'Frequency must be less than the period between start and end')
     offset = freq * stride / 100
