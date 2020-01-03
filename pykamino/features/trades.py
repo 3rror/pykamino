@@ -80,7 +80,8 @@ def price_std(trades: pandas.DataFrame) -> numpy.float64:
     Args:
         trades: dataFrame of trades
     """
-    return trades.price.astype(float).std()
+    # Do not use Bessel's correction
+    return trades.price.astype(float).std(ddof=0)
 
 
 def buy_count(trades: pandas.DataFrame) -> int:
@@ -103,7 +104,6 @@ def sell_count(trades: pandas.DataFrame) -> int:
     return len(sells(trades))
 
 
-@rounded
 def total_buy_volume(trades: pandas.DataFrame) -> numpy.float64:
     """
     Get the total amount of crypto bought.
@@ -114,7 +114,6 @@ def total_buy_volume(trades: pandas.DataFrame) -> numpy.float64:
     return buys(trades).amount.sum()
 
 
-@rounded
 def total_sell_volume(trades: pandas.DataFrame) -> numpy.float64:
     """
     Get the total amount of crypto sold.
@@ -125,7 +124,6 @@ def total_sell_volume(trades: pandas.DataFrame) -> numpy.float64:
     return sells(trades).amount.sum()
 
 
-@rounded
 def price_movement(trades: pandas.DataFrame) -> Optional[Decimal]:
     """
     Get the price difference between the oldest trade and the most recent one.
@@ -195,6 +193,7 @@ def extract(interval: TimeWindow, res: str = '2min', stride: int = 10,
         for product in products:
             worker = partial(extraction_worker, product=product)
             # Trades don't require much memory, we can affort to use map() which is faster than imap()
-            feat_lists = pool.map(worker, sliding_time_windows(interval, res, stride))
+            feat_lists = pool.map(
+                worker, sliding_time_windows(interval, res, stride))
             features[product] = itertools.chain(*feat_lists)
     return features
