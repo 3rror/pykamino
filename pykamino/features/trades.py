@@ -1,13 +1,18 @@
 from decimal import Decimal
 from functools import partial
 from typing import Any, Dict, List, Optional, Tuple
+import itertools
 import multiprocessing
+
 
 from pykamino.db import database, Trade
 from pykamino.features import TimeWindow, sliding_time_windows
 from pykamino.features.decorators import rounded
 import numpy
 import pandas
+
+FEATURES = ('buy_count', 'sell_count', 'total_buy_volume', 'total_sell_volume',
+            'price_mean', 'price_std',  'price_movement')
 
 
 def buys(trades: pandas.DataFrame) -> pandas.DataFrame:
@@ -36,28 +41,28 @@ def latest_trade(trades: pandas.DataFrame) -> pandas.Series:
 
     Args:
         trades: dataFrame of trades
-
-    Raises:
-        ValueError: if `trades` is empty
     """
+    # A check with an if-statement is much faster than catching an exception.
+    # On a test dataset that translates into plenty of DataFrame, it saves ~5.3% of extraction time.
+    if trades.empty:
+        return pandas.Series(index=trades.columns)
     return trades.loc[trades.time.idxmax()]
 
 
-def oldest_trade(trades) -> pandas.Series:
+def oldest_trade(trades: pandas.DataFrame) -> pandas.Series:
     """
     Get the oldest trade in the pandas.DataFrame.
 
     Args:
         trades: dataFrame of trades
-
-    Raises:
-        ValueError: if `trades` is empty
     """
+    if trades.empty:
+        return pandas.Series(index=trades.columns)
     return trades.loc[trades.time.idxmin()]
 
 
 @rounded
-def mean_price(trades: pandas.DataFrame) -> numpy.float64:
+def price_mean(trades: pandas.DataFrame) -> numpy.float64:
     """
     Get the mean price of all the trades.
 
@@ -127,9 +132,6 @@ def price_movement(trades: pandas.DataFrame) -> Optional[Decimal]:
 
     Args:
         trades: dataFrame of trades
-
-    Raises:
-        ValueError: if `trades` is empty
     """
     return oldest_trade(trades).price - latest_trade(trades).price
 
@@ -152,28 +154,18 @@ def fetch_trades(interval: TimeWindow, product: str = 'BTC-USD'):
     return pandas.DataFrame(trades)
 
 
-def compute_all_features(trades, interval: TimeWindow):
+def compute_all_features(trades: pandas.DataFrame, interval: TimeWindow):
+    feats = {'start_time': interval.start, 'end_time': interval.end}
     try:
         trades_slice = trades[trades.time.between(*interval)]
-        return {'buy_count': buy_count(trades_slice),
-                'sell_count': sell_count(trades_slice),
-                'total_buy_volume': total_buy_volume(trades_slice),
-                'total_sell_volume': total_sell_volume(trades_slice),
-                'price_mean': mean_price(trades_slice),
-                'price_std': price_std(trades_slice),
-                'price_movement': price_movement(trades_slice),
-                'start_time': interval.start,
-                'end_time': interval.end}
-    except (AttributeError, ValueError):
-        return {'buy_count': None,
-                'sell_count': None,
-                'total_buy_volume': None,
-                'total_sell_volume': None,
-                'price_mean': None,
-                'price_std': None,
-                'price_movement': None,
-                'start_time': interval.start,
-                'end_time': interval.end}
+    except AttributeError:
+        for f in FEATURES:
+            feats[f] = None
+    else:
+        module_scope = globals()
+        for f in FEATURES:
+            feats[f] = module_scope[f](trades_slice)
+    return feats
 
 
 def extraction_worker(intervals: List[TimeWindow], product='BTC-USD'):
@@ -202,7 +194,7 @@ def extract(interval: TimeWindow, res: str = '2min', stride: int = 10,
     with multiprocessing.Pool() as pool:
         for product in products:
             worker = partial(extraction_worker, product=product)
-            # Trades don't require much memory, we can affort to use map()
-            features[product] = pool.map(worker,
-                                         sliding_time_windows(interval, res, stride))
+            # Trades don't require much memory, we can affort to use map() which is faster than imap()
+            feat_lists = pool.map(worker, sliding_time_windows(interval, res, stride))
+            features[product] = itertools.chain(*feat_lists)
     return features
