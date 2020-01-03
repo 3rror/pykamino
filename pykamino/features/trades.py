@@ -104,6 +104,7 @@ def sell_count(trades: pandas.DataFrame) -> int:
     return len(sells(trades))
 
 
+@rounded
 def total_buy_volume(trades: pandas.DataFrame) -> numpy.float64:
     """
     Get the total amount of crypto bought.
@@ -114,6 +115,7 @@ def total_buy_volume(trades: pandas.DataFrame) -> numpy.float64:
     return buys(trades).amount.sum()
 
 
+@rounded
 def total_sell_volume(trades: pandas.DataFrame) -> numpy.float64:
     """
     Get the total amount of crypto sold.
