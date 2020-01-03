@@ -193,7 +193,7 @@ class TradeFeatures(BaseTestCase):
 
     def test_std_price(self):
         self.assertAlmostEqual(trades.price_std(self.dataframe),
-                               2958.03989154, delta=1e-8)
+                               2883.14064867, delta=1e-8)
 
     def test_buy_count(self):
         self.assertEqual(trades.buy_count(self.dataframe), 10)
