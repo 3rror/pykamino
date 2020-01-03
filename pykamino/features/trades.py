@@ -149,20 +149,16 @@ def fetch_trades(interval: TimeWindow, product: str = 'BTC-USD'):
               .select()
               .where((Trade.product == product) &
                      Trade.time.between(*interval)).namedtuples())
-    return pandas.DataFrame(trades)
+    return pandas.DataFrame(trades, columns=Trade._meta.columns.keys())
 
 
 def compute_all_features(trades: pandas.DataFrame, interval: TimeWindow):
     feats = {'start_time': interval.start, 'end_time': interval.end}
-    try:
-        trades_slice = trades[trades.time.between(*interval)]
-    except AttributeError:
-        for f in FEATURES:
-            feats[f] = None
-    else:
-        module_scope = globals()
-        for f in FEATURES:
-            feats[f] = module_scope[f](trades_slice)
+    trades_slice = trades[trades.time.between(*interval)]
+
+    module_scope = globals()
+    for f in FEATURES:
+        feats[f] = module_scope[f](trades_slice)
     return feats
 
 
