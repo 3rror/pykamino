@@ -205,13 +205,6 @@ class TradeFeatures(BaseTestCase):
     def test_price_movement(self):
         self.assertEqual(trades.price_movement(self.dataframe), -9500)
 
-    def test_compute_all_features(self):
-        # Pandas can be very unintuitive. Let's test if we can get
-        # features from a subset of the dataframe as well...
-        interval = TimeWindow(self.START_DT, self.START_DT + delta(minutes=46))
-        subset = trades.compute_all_features(self.dataframe, interval)
-        self.assertEqual(subset['price_mean'], 2500)
-
     # TODO: test CSV generation, not only calculations
 
 

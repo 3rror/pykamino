@@ -154,23 +154,25 @@ def fetch_trades(interval: TimeWindow, product: str = 'BTC-USD'):
     return pandas.DataFrame(trades, columns=Trade._meta.columns.keys())
 
 
-def compute_all_features(trades: pandas.DataFrame, interval: TimeWindow):
-    feats = {'start_time': interval.start, 'end_time': interval.end}
-    trades_slice = trades[trades.time.between(*interval)]
-
-    module_scope = globals()
-    for f in FEATURES:
-        feats[f] = module_scope[f](trades_slice)
-    return feats
-
-
 def extraction_worker(intervals: List[TimeWindow], product='BTC-USD'):
+    def compute(trades, interval):
+        """
+        Take a big dataframe and compute features only for a certain time interval.
+        """
+        feats = {'start_time': interval.start, 'end_time': interval.end}
+        trades_slice = trades[trades.time.between(*interval)]
+
+        module_scope = globals()
+        for f in FEATURES:
+            feats[f] = module_scope[f](trades_slice)
+        return feats
+
     range = TimeWindow(intervals[0].start, intervals[-1].end)
     trades = fetch_trades(range, product=product)
-    return [compute_all_features(trades, w) for w in intervals]
+    return [compute(trades, w) for w in intervals]
 
 
-def extract(interval: TimeWindow, res: str = '2min', stride: int = 10,
+def extract(interval: TimeWindow, res: str = '2min', stride: int = 100,
             products: Tuple[str, ...] = ('BTC-USD',)) -> Dict[str, List[Dict[str, Any]]]:
     """
     Extract all the trade features, fetching data from the database.
@@ -178,7 +180,7 @@ def extract(interval: TimeWindow, res: str = '2min', stride: int = 10,
     Args:
         interval: a time range
         res: the feature "resolution", that is the length of a time window
-        stride: overlap of a window from the preceding one
+        stride: offset of a window from the preceding one. 100 means there's no overlap.
         products: some "fiat-crypto" couples of which to compute features
 
     Returns:
