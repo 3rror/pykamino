@@ -3,7 +3,7 @@ import csv
 
 
 def features_to_csv(feature_set, pathname, basename):
-    for product, feats in feature_set.items():
+    for product, feats in feature_set:
         feats = iter(feats)
         first_row = next(feats)
         with open(f'{path.join(pathname, basename)}_{product}.csv', 'w') as csv_file:

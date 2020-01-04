@@ -277,14 +277,13 @@ def extraction_worker(intervals: List[TimeWindow], product: str = 'BTC-USD'):
 
 
 def extract(interval: TimeWindow, res: str = '2min', products: Tuple[str, ...] = ('BTC-USD',)):
-    features = {}
     res = pandas.to_timedelta(res)
     with multiprocessing.Pool() as pool:
         for product in products:
-            windows = sliding_time_windows(interval, res, stride=100)
-            # TODO: both `chunksize`s should be dynamic, depending
-            # on the interval length and number of rows in the database.
-            worker = partial(extraction_worker, product)
-            output = pool.imap(worker, windows, chunksize=2)
-            features[product] = list(itertools.chain(*output))
-    return features
+            # TODO: chunksize=200 is good for a 1-second resolution, so that computation time exceeds
+            # query time, but ideally the chunksize is adaptive.
+            windows = sliding_time_windows(
+                interval, res, stride=100, chunksize=200)
+            worker = partial(extraction_worker, product=product)
+            feat_lists = pool.imap(worker, windows, chunksize=2)
+            yield product, itertools.chain(*feat_lists)

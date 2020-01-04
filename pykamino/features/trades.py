@@ -1,11 +1,11 @@
 from decimal import Decimal
 from functools import partial
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, ItemsView
 import itertools
 import multiprocessing
 
 
-from pykamino.db import database, Trade
+from pykamino.db import Trade
 from pykamino.features import TimeWindow, sliding_time_windows
 from pykamino.features.decorators import rounded
 import numpy
@@ -173,7 +173,7 @@ def extraction_worker(intervals: List[TimeWindow], product='BTC-USD'):
 
 
 def extract(interval: TimeWindow, res: str = '2min', stride: int = 100,
-            products: Tuple[str, ...] = ('BTC-USD',)) -> Dict[str, List[Dict[str, Any]]]:
+            products: Tuple[str, ...] = ('BTC-USD',)) -> ItemsView[str, Dict[str, Any]]:
     """
     Extract all the trade features, fetching data from the database.
     The features will be computed for every time period of length `res`.
@@ -184,7 +184,7 @@ def extract(interval: TimeWindow, res: str = '2min', stride: int = 100,
         products: some "fiat-crypto" couples of which to compute features
 
     Returns:
-        A dictionary whose keys are `products` and values are a list of another dicts.
+        A dictionary view whose keys are `products` and values are a list of another dicts.
         Those dicts have feature names as keys.
     """
     features = {}
@@ -196,4 +196,4 @@ def extract(interval: TimeWindow, res: str = '2min', stride: int = 100,
             feat_lists = pool.map(
                 worker, sliding_time_windows(interval, res, stride))
             features[product] = itertools.chain(*feat_lists)
-    return features
+    return features.items()
