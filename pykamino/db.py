@@ -5,7 +5,6 @@ import math
 import os
 
 from playhouse import pool
-import iso8601
 import peewee
 
 # We want the database to be dinamically defined, so that we can support
