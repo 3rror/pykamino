@@ -2,14 +2,12 @@ import unittest
 from abc import abstractmethod
 from datetime import datetime
 from datetime import timedelta as delta
-from datetime import timezone
 from decimal import Decimal
 
 from peewee import SqliteDatabase
 
 from pykamino.db import OrderState, Trade
 from pykamino.features import TimeWindow, orders, trades
-from pykamino.features.orders import FeatureCalculator
 
 
 class BaseTestCase(unittest.TestCase):
@@ -36,7 +34,7 @@ class BaseTestCase(unittest.TestCase):
 
 class OrderFeatures(BaseTestCase):
 
-    START_DT = datetime(2010, 1, 30, 11, 00, tzinfo=timezone.utc)
+    START_DT = datetime(2010, 1, 30, 11, 00)
     UPDATE_DT = START_DT + delta(hours=3)
     CLOSE_DT = START_DT + delta(hours=5)
     N_ORDERS = 20
@@ -93,18 +91,17 @@ class OrderFeatures(BaseTestCase):
     def setUp(self):
         super().setUp()
         self.prepare_dataframes()
-        self.fc = FeatureCalculator(
-            self.order_states,
-            self.UPDATE_DT + delta(minutes=10))
+        self.filtered_states = orders.get_open_orders(
+            self.order_states, self.UPDATE_DT + delta(minutes=10))
 
     def test_database_query(self):
         self.assertEqual(len(self.order_states), 16)
 
     def test_best_ask_price(self):
-        self.assertEqual(self.fc.best_ask_price(), 2000)
+        self.assertEqual(orders.best_ask_price(self.filtered_states), 2000)
 
     def test_best_bid_price(self):
-        self.assertEqual(self.fc.best_bid_price(), 10500)
+        self.assertEqual(orders.best_bid_price(self.filtered_states), 10500)
 
     def test_best_ask_amount(self):
         OrderState.insert({
@@ -116,10 +113,9 @@ class OrderFeatures(BaseTestCase):
             'starting_at': self.START_DT
         }).execute()
         self.prepare_dataframes()
-        fc = FeatureCalculator(
-            self.order_states,
-            self.UPDATE_DT + delta(minutes=10))
-        self.assertEqual(fc.best_ask_amount(), 1.2)
+        filtered_states = orders.get_open_orders(
+            self.order_states, self.UPDATE_DT + delta(minutes=10))
+        self.assertEqual(orders.best_ask_amount(filtered_states), 1.2)
 
     def test_best_bid_amount(self):
         OrderState.insert({
@@ -131,36 +127,35 @@ class OrderFeatures(BaseTestCase):
             'starting_at': self.START_DT
         }).execute()
         self.prepare_dataframes()
-        fc = FeatureCalculator(
-            self.order_states,
-            self.UPDATE_DT + delta(minutes=10))
-        self.assertEqual(fc.best_bid_amount(), 2.9)
+        filtered_states = orders.get_open_orders(
+            self.order_states, self.UPDATE_DT + delta(minutes=10))
+        self.assertEqual(orders.best_bid_amount(filtered_states), 2.9)
 
     def test_mid_market_price(self):
-        self.assertEqual(self.fc.mid_market_price(), 6250)
+        self.assertEqual(orders.mid_market_price(self.filtered_states), 6250)
 
     def test_bid_ask_spread(self):
-        self.assertEqual(self.fc.bid_ask_spread(), 8500)
+        self.assertEqual(orders.bid_ask_spread(self.filtered_states), 8500)
 
     def test_ask_depth(self):
-        self.assertEqual(self.fc.ask_depth(), 8)
+        self.assertEqual(orders.ask_depth(self.filtered_states), 8)
 
     def test_bid_depth(self):
-        self.assertEqual(self.fc.bid_depth(), 8)
+        self.assertEqual(orders.bid_depth(self.filtered_states), 8)
 
     def test_ask_volume_weighted(self):
         self.assertAlmostEqual(
-            self.fc.ask_volume_weighted(), 0.13466247, delta=1e-8)
+            orders.ask_volume_weighted(self.filtered_states), 0.13466247, delta=1e-8)
 
     def test_bid_volume_weighted(self):
         self.assertAlmostEqual(
-            self.fc.bid_volume_weighted(), -0.00561498, delta=1e-8)
+            orders.bid_volume_weighted(self.filtered_states), -0.00561498, delta=1e-8)
 
     def test_ask_volume(self):
-        self.assertEqual(self.fc.ask_volume(), 108.4)
+        self.assertEqual(orders.ask_volume(self.filtered_states), 108.4)
 
     def test_bid_volume(self):
-        self.assertEqual(self.fc.bid_volume(), 9.2)
+        self.assertEqual(orders.bid_volume(self.filtered_states), 9.2)
 
 
 class TradeFeatures(BaseTestCase):
