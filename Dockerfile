@@ -1,6 +1,6 @@
 FROM python:3.6-slim
 
-LABEL name=pykamino version=0.9.0
+LABEL name=pykamino version=1.0.0
 
 RUN apt-get update \
   && apt-get install --no-install-recommends -y libpq-dev gcc libc-dev \
